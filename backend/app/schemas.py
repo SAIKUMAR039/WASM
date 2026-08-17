@@ -68,3 +68,16 @@ class SystemLogSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+class StreamExecutionRequest(BaseModel):
+    plugin_id: Optional[str] = None
+    code: Optional[str] = None
+    input_data: Optional[Any] = "HELLO WORLD"
+    tenant_id: str = "tenant_default"
+
+class StreamChunkEvent(BaseModel):
+    type: str  # "stdout", "stderr", "status", "result", "error"
+    data: Optional[str] = None
+    status: Optional[str] = None
+    id: Optional[str] = None
+
