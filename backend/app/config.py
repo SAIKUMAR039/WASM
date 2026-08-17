@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     ALLOW_FILESYSTEM_WRITE: bool = False
     ALLOWED_MODULES: list[str] = ["math", "json", "re", "datetime", "random", "hashlib", "collections", "itertools", "functools", "base64", "zlib"]
     
+    # Authentication & JWT Configuration
+    JWT_SECRET_KEY: str = "wasmbox-super-secret-jwt-signing-key-2026"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
+    DEFAULT_TENANT_ID: str = "tenant_default"
+    
     class Config:
         case_sensitive = True
 
