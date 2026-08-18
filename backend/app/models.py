@@ -59,3 +59,46 @@ class SystemLogDocument(BaseModel):
 
     class Config:
         populate_by_name = True
+
+class UserDocument(BaseModel):
+    id: str = Field(default_factory=generate_id, alias="_id")
+    username: str
+    email: str
+    hashed_password: str
+    role: str = "Developer"  # Admin, Developer, Viewer
+    tenant_id: str = "tenant_default"
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+
+class TenantDocument(BaseModel):
+    id: str = Field(default_factory=generate_id, alias="_id")
+    name: str
+    slug: str
+    plan: str = "Free"  # Free, Pro, Enterprise
+    owner_id: Optional[str] = None
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+
+class ApiKeyDocument(BaseModel):
+    id: str = Field(default_factory=generate_id, alias="_id")
+    tenant_id: str = "tenant_default"
+    user_id: Optional[str] = None
+    name: str
+    key_prefix: str
+    hashed_key: str
+    role: str = "Developer"  # Admin, Developer, Viewer
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+
+    class Config:
+        populate_by_name = True
