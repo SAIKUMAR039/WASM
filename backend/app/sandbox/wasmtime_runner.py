@@ -7,6 +7,25 @@ import traceback
 from typing import Dict, Any
 from app.config import settings
 
+class StreamingCaptureIO(io.StringIO):
+    """
+    StringIO capture stream that intercepts real-time chunk writes and dispatches
+    them to an optional streaming listener callback.
+    """
+    def __init__(self, stream_type: str = "stdout", on_chunk: Any = None):
+        super().__init__()
+        self.stream_type = stream_type
+        self.on_chunk = on_chunk
+
+    def write(self, s: str) -> int:
+        res = super().write(s)
+        if self.on_chunk and s:
+            try:
+                self.on_chunk(self.stream_type, s)
+            except Exception:
+                pass
+        return res
+
 class WasmSandboxRunner:
     """
     Wasmtime-powered secure execution sandbox. Executes any arbitrary Python code
@@ -18,15 +37,16 @@ class WasmSandboxRunner:
         self.memory_limit_mb = memory_limit_mb or settings.DEFAULT_MEMORY_LIMIT_MB
         self.timeout_sec = timeout_sec or settings.DEFAULT_EXECUTION_TIMEOUT_SEC
         
-    def execute(self, bundled_code: str, input_data: Any) -> Dict[str, Any]:
+    def execute(self, bundled_code: str, input_data: Any, stream_callback: Any = None) -> Dict[str, Any]:
         """
         Executes user Python code inside the sandbox.
         Captures stdout, stderr, exception tracebacks, and process(data) return values.
+        Optionally streams stdout/stderr chunks via stream_callback.
         """
         start_time = time.perf_counter()
         
-        stdout_capture = io.StringIO()
-        stderr_capture = io.StringIO()
+        stdout_capture = StreamingCaptureIO(stream_type="stdout", on_chunk=stream_callback)
+        stderr_capture = StreamingCaptureIO(stream_type="stderr", on_chunk=stream_callback)
         
         # Prepare execution input string
         input_str = json.dumps(input_data) if not isinstance(input_data, str) else input_data
