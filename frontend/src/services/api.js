@@ -27,8 +27,89 @@ export const api = {
   updatePlugin: (id, data) => request(`/plugins/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePlugin: (id) => request(`/plugins/${id}`, { method: 'DELETE' }),
 
-  // Execution Endpoint
+  // Execution Endpoints
   executeCode: (payload) => request('/execute', { method: 'POST', body: JSON.stringify(payload) }),
+
+  executeStream: (payload, { onChunk, onStatus, onResult, onError } = {}) => {
+    return new Promise((resolve, reject) => {
+      const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+      const wsProtocol = isHttps ? 'wss:' : 'ws:';
+      const host = typeof window !== 'undefined' && window.location.hostname === 'localhost'
+        ? 'localhost:8000'
+        : (typeof window !== 'undefined' && window.location.host ? window.location.host : 'localhost:8000');
+      const wsUrl = `${wsProtocol}//${host}/ws/execute`;
+
+      let socket;
+      let isSettled = false;
+
+      try {
+        socket = new WebSocket(wsUrl);
+      } catch (err) {
+        console.warn('WebSocket initialization failed, falling back to HTTP:', err);
+        return api.executeCode(payload)
+          .then((res) => {
+            if (onResult) onResult(res);
+            resolve(res);
+          })
+          .catch((e) => {
+            if (onError) onError(e);
+            reject(e);
+          });
+      }
+
+      socket.onopen = () => {
+        if (onStatus) onStatus('RUNNING');
+        socket.send(JSON.stringify(payload));
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'stdout' || msg.type === 'stderr') {
+            if (onChunk) onChunk(msg.data, msg.type);
+          } else if (msg.type === 'status') {
+            if (onStatus) onStatus(msg.status);
+          } else if (msg.type === 'result') {
+            isSettled = true;
+            if (onResult) onResult(msg);
+            resolve(msg);
+            try { socket.close(); } catch (e) {}
+          } else if (msg.type === 'error') {
+            isSettled = true;
+            const err = new Error(msg.error || 'Execution failed');
+            if (onError) onError(err);
+            reject(err);
+            try { socket.close(); } catch (e) {}
+          }
+        } catch (e) {
+          if (onChunk) onChunk(event.data, 'stdout');
+        }
+      };
+
+      socket.onerror = (err) => {
+        if (!isSettled) {
+          console.warn('WebSocket stream error, fallback to REST execute:', err);
+          api.executeCode(payload)
+            .then((res) => {
+              isSettled = true;
+              if (onResult) onResult(res);
+              resolve(res);
+            })
+            .catch((e) => {
+              isSettled = true;
+              if (onError) onError(e);
+              reject(e);
+            });
+        }
+      };
+
+      socket.onclose = () => {
+        if (!isSettled) {
+          if (onStatus) onStatus('DISCONNECTED');
+        }
+      };
+    });
+  },
 
   // Metrics & Logs
   getMetricsSummary: (tenantId = 'tenant_default') => request(`/metrics/summary?tenant_id=${tenantId}`),
