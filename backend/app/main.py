@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import connect_to_mongo, close_mongo_connection
-from app.routers import plugins, execution, metrics, settings as settings_router
+from app.routers import plugins, execution, metrics, settings as settings_router, auth
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -29,6 +29,7 @@ app.add_middleware(
 )
 
 # Register Routers
+app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(plugins.router, prefix=settings.API_V1_STR)
 app.include_router(execution.router, prefix=settings.API_V1_STR)
 app.include_router(metrics.router, prefix=settings.API_V1_STR)
