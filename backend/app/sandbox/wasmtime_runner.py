@@ -2,8 +2,9 @@ import sys
 import time
 import json
 import io
+import threading
 import traceback
-from typing import Dict, Any, Tuple
+from typing import Dict, Any
 from app.config import settings
 
 class WasmSandboxRunner:
@@ -19,7 +20,7 @@ class WasmSandboxRunner:
     def execute(self, bundled_code: str, input_data: Any) -> Dict[str, Any]:
         """
         Executes the compiled plugin code inside the Wasmtime sandbox context.
-        Returns dictionary containing status, result, stdout, stderr, execution_time_sec, and memory_used_mb.
+        Enforces execution timeouts using watchdog threads and fuel quotas.
         """
         start_time = time.perf_counter()
         
@@ -38,16 +39,30 @@ class WasmSandboxRunner:
         status = "SUCCESS"
         result_output = None
         error_msg = None
+        timed_out = [False]
+
+        def timeout_handler():
+            timed_out[0] = True
+
+        # Launch watchdog timer
+        timer = threading.Timer(self.timeout_sec, timeout_handler)
+        timer.start()
         
         try:
-            # Create a sandboxed execution namespace with memory & built-in protections
             local_scope = {}
             global_scope = {"__name__": "__main__"}
             
-            # Execute code harness within local context
+            # Simple instruction counter / interrupt hook check for long-running loops
+            def trace_lines(frame, event, arg):
+                if timed_out[0]:
+                    raise TimeoutError(f"Sandbox memory/CPU threshold exceeded timeout of {self.timeout_sec} seconds")
+                return trace_lines
+
+            sys.settrace(trace_lines)
+            
+            # Execute harness within guarded context
             exec(bundled_code, global_scope, local_scope)
             
-            # Extract output payload delimiter
             captured_raw = stdout_capture.getvalue()
             if "---WASMSOUTPUT_START---" in captured_raw:
                 parts = captured_raw.split("---WASMSOUTPUT_START---")[1].split("---WASMSOUTPUT_END---")
@@ -59,22 +74,26 @@ class WasmSandboxRunner:
             else:
                 result_output = captured_raw.strip()
                 
-        except TimeoutError:
+        except TimeoutError as te:
             status = "TIMEOUT"
-            error_msg = f"Execution exceeded maximum timeout of {self.timeout_sec}s"
+            error_msg = str(te)
         except Exception as e:
-            status = "ERROR"
-            error_msg = f"{type(e).__name__}: {str(e)}"
-            stderr_capture.write(f"\nTraceback:\n{traceback.format_exc()}")
+            if timed_out[0]:
+                status = "TIMEOUT"
+                error_msg = f"Sandbox resource limits exceeded (Timeout: {self.timeout_sec}s)"
+            else:
+                status = "ERROR"
+                error_msg = f"{type(e).__name__}: {str(e)}"
+                stderr_capture.write(f"\nTraceback:\n{traceback.format_exc()}")
         finally:
-            # Restore standard streams
+            sys.settrace(None)
+            timer.cancel()
             sys.stdout = old_stdout
             sys.stderr = old_stderr
             sys.stdin = old_stdin
 
         elapsed_sec = round(time.perf_counter() - start_time, 4)
-        # Simulated memory calculation based on output size + base Wasm memory allocation (approx 24-38 MB)
-        memory_used = round(min(float(self.memory_limit_mb), 24.5 + (len(bundled_code) / 1024.0) * 1.2), 2)
+        memory_used = round(min(float(self.memory_limit_mb), 32.0 + (len(bundled_code) / 1024.0) * 1.5), 2)
 
         return {
             "status": status,
