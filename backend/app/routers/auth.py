@@ -101,3 +101,42 @@ def register_user(user_in: UserRegister, db=Depends(get_db)):
         "token_type": "bearer",
         "user": user_doc
     }
+
+from app.schemas import UserLogin
+from app.auth import verify_password
+
+@router.post("/login", response_model=TokenResponse)
+def login_user(creds: UserLogin, db=Depends(get_db)):
+    """Authenticate user with username or email and return JWT access token."""
+    user = None
+    if db is not None:
+        user = db["users"].find_one({
+            "$or": [{"username": creds.username}, {"email": creds.username}],
+            "is_active": True
+        })
+    else:
+        for u in _memory_users.values():
+            if (u["username"] == creds.username or u["email"] == creds.username) and u["is_active"]:
+                user = u
+                break
+
+    if not user or not verify_password(creds.password, user.get("hashed_password", "")):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username/email or password"
+        )
+
+    user["id"] = user.get("_id", user.get("id"))
+    token = create_access_token({
+        "sub": user["id"],
+        "username": user["username"],
+        "email": user["email"],
+        "role": user["role"],
+        "tenant_id": user["tenant_id"]
+    })
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": user
+    }
