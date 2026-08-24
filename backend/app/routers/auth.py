@@ -140,3 +140,50 @@ def login_user(creds: UserLogin, db=Depends(get_db)):
         "token_type": "bearer",
         "user": user
     }
+
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from app.auth import decode_access_token
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
+@router.get("/me")
+def get_current_user_profile(
+    bearer: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db=Depends(get_db)
+):
+    """Retrieve profile and organization metadata for the currently authenticated user."""
+    if not bearer or not bearer.credentials:
+        raise HTTPException(status_code=401, detail="Authentication token required")
+
+    payload = decode_access_token(bearer.credentials)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    user_id = payload.get("sub")
+    user = None
+    if db is not None:
+        user = db["users"].find_one({"_id": user_id, "is_active": True})
+        if user:
+            user["id"] = user.get("_id", user_id)
+            user.pop("hashed_password", None)
+            tenant = db["tenants"].find_one({"_id": user.get("tenant_id")})
+            user["tenant_name"] = tenant.get("name") if tenant else "Default Organization"
+            return user
+
+    if user_id in _memory_users and _memory_users[user_id]["is_active"]:
+        user = dict(_memory_users[user_id])
+        user.pop("hashed_password", None)
+        tenant = _memory_tenants.get(user.get("tenant_id"))
+        user["tenant_name"] = tenant.get("name") if tenant else "Default Organization"
+        return user
+
+    # Construct from token payload
+    return {
+        "id": user_id,
+        "username": payload.get("username", "user"),
+        "email": payload.get("email", ""),
+        "role": payload.get("role", "Developer"),
+        "tenant_id": payload.get("tenant_id", "tenant_default"),
+        "tenant_name": "Default Organization",
+        "is_active": True
+    }
