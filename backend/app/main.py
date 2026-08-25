@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base
-from app.routers import plugins, execution
+from app.routers import plugins, execution, metrics, settings as settings_router
 
 # Initialize database tables
 Base.metadata.create_all(bind=engine)
@@ -25,6 +25,8 @@ app.add_middleware(
 # Register Routers
 app.include_router(plugins.router, prefix=settings.API_V1_STR)
 app.include_router(execution.router, prefix=settings.API_V1_STR)
+app.include_router(metrics.router, prefix=settings.API_V1_STR)
+app.include_router(settings_router.router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():
