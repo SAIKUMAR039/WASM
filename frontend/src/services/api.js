@@ -114,6 +114,7 @@ export const api = {
   // Metrics & Logs
   getMetricsSummary: (tenantId = 'tenant_default') => request(`/metrics/summary?tenant_id=${tenantId}`),
   getExecutions: (tenantId = 'tenant_default') => request(`/metrics/executions?tenant_id=${tenantId}`),
+  getMetricsTrends: (tenantId = 'tenant_default', limit = 30) => request(`/metrics/trends?tenant_id=${tenantId}&limit=${limit}`),
 
   // Security Settings
   getPolicy: (tenantId = 'tenant_default') => request(`/settings?tenant_id=${tenantId}`),
