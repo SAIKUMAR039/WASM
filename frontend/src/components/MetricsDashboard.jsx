@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -25,6 +25,9 @@ export default function MetricsDashboard({
   latestExecution,
   executionHistory = [],
 }) {
+  const [timeWindow, setTimeWindow] = useState('20');
+  const [chartView, setChartView] = useState('all');
+
   const execTime =
     latestExecution?.execution_time_sec ??
     metrics?.avg_execution_time_sec ??
@@ -50,7 +53,10 @@ export default function MetricsDashboard({
       (a, b) => new Date(a.executed_at) - new Date(b.executed_at)
     );
 
-    return items.slice(-20).map((item, index) => ({
+    const limit = timeWindow === 'all' ? items.length : parseInt(timeWindow, 10);
+    const sliced = items.slice(-limit);
+
+    return sliced.map((item, index) => ({
       index: index + 1,
       time: item.executed_at
         ? new Date(item.executed_at).toLocaleTimeString([], {
@@ -63,7 +69,7 @@ export default function MetricsDashboard({
       memory: Number(item.memory_used_mb ?? 0),
       status: item.status || 'UNKNOWN',
     }));
-  }, [executionHistory, latestExecution]);
+  }, [executionHistory, latestExecution, timeWindow]);
 
   return (
     <div className="space-y-6">
@@ -164,15 +170,59 @@ export default function MetricsDashboard({
 
       {/* Analytics Charts */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
-        <div className="flex items-center gap-3 mb-2">
-          <Activity className="w-5 h-5 text-purple-400" />
-          <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">
-            Live Execution Telemetry
-          </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800/80 gap-3 mb-6">
+          <div>
+            <div className="flex items-center gap-3">
+              <Activity className="w-5 h-5 text-purple-400" />
+              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">
+                Live Execution Telemetry
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Interactive latency and memory trends from recent sandbox runs.
+            </p>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-2 text-xs">
+            {/* View Selector */}
+            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+              {['all', 'latency', 'memory'].map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setChartView(v)}
+                  className={`px-2.5 py-1 rounded-lg font-medium capitalize transition-all ${
+                    chartView === v
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+
+            {/* Time Window Selector */}
+            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+              {[
+                { label: '10', value: '10' },
+                { label: '20', value: '20' },
+                { label: 'All', value: 'all' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setTimeWindow(opt.value)}
+                  className={`px-2 py-1 rounded-lg font-mono text-[11px] transition-all ${
+                    timeWindow === opt.value
+                      ? 'bg-slate-800 text-slate-100 font-semibold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-        <p className="text-xs text-slate-500 mb-6">
-          Execution latency and memory usage from recent sandbox runs.
-        </p>
 
         {chartData.length === 0 ? (
           <div className="h-[280px] flex items-center justify-center border border-dashed border-slate-800 rounded-xl">
@@ -183,8 +233,9 @@ export default function MetricsDashboard({
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div className={`grid gap-6 ${chartView === 'all' ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
             {/* Execution Latency Chart */}
+            {(chartView === 'all' || chartView === 'latency') && (
             <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-4">
               <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-4">
                 Execution Latency
@@ -230,8 +281,10 @@ export default function MetricsDashboard({
                 </LineChart>
               </ResponsiveContainer>
             </div>
+            )}
 
             {/* Memory Usage Chart */}
+            {(chartView === 'all' || chartView === 'memory') && (
             <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-4">
               <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-4">
                 Memory Usage
@@ -277,6 +330,7 @@ export default function MetricsDashboard({
                 </AreaChart>
               </ResponsiveContainer>
             </div>
+            )}
           </div>
         )}
       </div>

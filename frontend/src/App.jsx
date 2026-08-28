@@ -184,7 +184,11 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
               <h2 className="text-xl font-bold text-slate-100">Platform Overview</h2>
-              <MetricsDashboard metrics={metrics} latestExecution={executionResult} />
+              <MetricsDashboard
+                metrics={metrics}
+                latestExecution={executionResult}
+                executionHistory={executionHistory}
+              />
             </div>
           )}
 
