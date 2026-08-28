@@ -120,3 +120,15 @@ def get_current_user(
         "tenant_id": settings.DEFAULT_TENANT_ID,
         "is_active": True
     }
+
+def require_roles(allowed_roles: List[str]):
+    """Enforce Role-Based Access Control (RBAC) permissions (Admin, Developer, Viewer)."""
+    def role_dependency(current_user: dict = Depends(get_current_user)) -> dict:
+        user_role = current_user.get("role", "Viewer")
+        if user_role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied: role '{user_role}' is not authorized. Allowed roles: {', '.join(allowed_roles)}"
+            )
+        return current_user
+    return role_dependency
