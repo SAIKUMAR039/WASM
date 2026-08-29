@@ -24,6 +24,56 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
   const handleEditorDidMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+
+    // Register WasmBox Python Completion Item Provider
+    if (!window._wasmboxPythonCompletionsRegistered) {
+      monaco.languages.registerCompletionItemProvider('python', {
+        provideCompletionItems: (model, position) => {
+          const word = model.getWordUntilPosition(position);
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn,
+          };
+
+          const suggestions = [
+            {
+              label: 'process',
+              kind: monaco.languages.CompletionItemKind.Function,
+              documentation: 'WasmBox Plugin Entrypoint: process(data)\nReceives execution input and returns processed dictionary.',
+              insertText: 'def process(data):\n    """WasmBox Plugin Entrypoint"""\n    return {\n        "status": "success",\n        "result": data\n    }',
+              range,
+            },
+            {
+              label: 'wasm_get_input',
+              kind: monaco.languages.CompletionItemKind.Function,
+              documentation: 'Retrieve raw input data passed to WasmBox sandbox.',
+              insertText: 'wasm_get_input()',
+              range,
+            },
+            {
+              label: 'wasm_emit_output',
+              kind: monaco.languages.CompletionItemKind.Function,
+              documentation: 'Emit structured result dictionary from WASM sandbox.',
+              insertText: 'wasm_emit_output({"status": "success", "result": ${1:value}})',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              range,
+            },
+            {
+              label: 'wasm_memory_limit',
+              kind: monaco.languages.CompletionItemKind.Variable,
+              documentation: 'Query maximum memory allocation configured for this sandbox execution.',
+              insertText: 'wasm_memory_limit',
+              range,
+            },
+          ];
+
+          return { suggestions };
+        },
+      });
+      window._wasmboxPythonCompletionsRegistered = true;
+    }
   };
 
   // Update error markers in Monaco editor when errorDetails changes
