@@ -7,21 +7,30 @@ from app.schemas import ExecutionRequest, ExecutionResponse
 from app.pipeline.validator import validate_python_code
 from app.pipeline.compiler import PythonWasmCompiler
 from app.sandbox.wasmtime_runner import WasmSandboxRunner
+from app.auth import get_current_user, require_roles
 
 router = APIRouter(prefix="/execute", tags=["Execution"])
 
 _memory_executions = []
 
 @router.post("", response_model=ExecutionResponse)
-def execute_code(req: ExecutionRequest, db=Depends(get_db)):
+def execute_code(
+    req: ExecutionRequest,
+    user=Depends(require_roles(["Admin", "Developer"])),
+    db=Depends(get_db)
+):
     """
-    Executes Python code inside the Wasmtime sandbox and records output/metrics document in MongoDB.
+    Executes Python code inside the Wasmtime sandbox and records execution in MongoDB.
+    Restricted to Admin and Developer roles (Viewer denied).
     """
     code_to_run = req.code
     plugin_id = req.plugin_id
+    tenant_id = user.get("tenant_id") or req.tenant_id or "tenant_default"
 
     if plugin_id and db is not None:
-        plugin = db["plugins"].find_one({"_id": plugin_id, "tenant_id": req.tenant_id})
+        plugin = db["plugins"].find_one({"_id": plugin_id, "tenant_id": tenant_id})
+        if not plugin:
+            plugin = db["plugins"].find_one({"_id": plugin_id})
         if not plugin:
             raise HTTPException(status_code=404, detail="Plugin not found for tenant")
         code_to_run = plugin.get("code")
@@ -29,11 +38,11 @@ def execute_code(req: ExecutionRequest, db=Depends(get_db)):
     if not code_to_run or not code_to_run.strip():
         raise HTTPException(status_code=400, detail="No Python code provided for execution")
 
-    # Fetch policy document
+    # Fetch tenant policy document
     mem_limit = 128
     timeout_sec = 5.0
     if db is not None:
-        policy = db["sandbox_policies"].find_one({"tenant_id": req.tenant_id})
+        policy = db["sandbox_policies"].find_one({"tenant_id": tenant_id})
         if policy:
             mem_limit = policy.get("memory_limit_mb", 128)
             timeout_sec = policy.get("timeout_sec", 5.0)
@@ -48,7 +57,7 @@ def execute_code(req: ExecutionRequest, db=Depends(get_db)):
             "_id": exec_id,
             "id": exec_id,
             "plugin_id": plugin_id,
-            "tenant_id": req.tenant_id,
+            "tenant_id": tenant_id,
             "status": "SECURITY_VIOLATION",
             "input_data": req.input_data,
             "output_result": {"error": "Security Violation", "details": violations},
@@ -77,7 +86,7 @@ def execute_code(req: ExecutionRequest, db=Depends(get_db)):
         "_id": exec_id,
         "id": exec_id,
         "plugin_id": plugin_id,
-        "tenant_id": req.tenant_id,
+        "tenant_id": tenant_id,
         "status": res["status"],
         "input_data": req.input_data,
         "output_result": res["output_result"],
