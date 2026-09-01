@@ -1,6 +1,6 @@
-import React, { useRef, useEffect } from 'react';
-import Editor from '@monaco-editor/react';
-import { Code, RotateCcw, Save, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import React, { useRef, useEffect, useState } from 'react';
+import Editor, { DiffEditor } from '@monaco-editor/react';
+import { Code, RotateCcw, Save, AlertTriangle, CheckCircle2, GitCompare, FileCode2, History } from 'lucide-react';
 
 const DEFAULT_PYTHON_SNIPPET = `def process(data):
     """
@@ -19,6 +19,9 @@ const DEFAULT_PYTHON_SNIPPET = `def process(data):
 export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, selectedPlugin }) {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
+  const [editorMode, setEditorMode] = useState('editor'); // 'editor' | 'diff'
+  const [savedSnapshot, setSavedSnapshot] = useState(code);
+  const [selectedSnapshot, setSelectedSnapshot] = useState('template');
 
   // Handle Monaco Editor Mounting
   const handleEditorDidMount = (editor, monaco) => {
@@ -198,6 +201,26 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
     setCode(DEFAULT_PYTHON_SNIPPET);
   };
 
+  const getOriginalCode = () => {
+    if (selectedSnapshot === 'saved') {
+      return savedSnapshot || DEFAULT_PYTHON_SNIPPET;
+    }
+    if (selectedSnapshot === 'plugin') {
+      return selectedPlugin?.code || DEFAULT_PYTHON_SNIPPET;
+    }
+    return DEFAULT_PYTHON_SNIPPET;
+  };
+
+  const handleSaveWrapper = () => {
+    setSavedSnapshot(code);
+    if (onSaveCode) onSaveCode();
+  };
+
+  const handleRestoreSnapshot = () => {
+    setCode(getOriginalCode());
+    setEditorMode('editor');
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
       {/* Editor Header */}
@@ -210,12 +233,61 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
           <span className="text-[10px] bg-purple-950 text-purple-300 border border-purple-800/50 px-2 py-0.5 rounded-full font-mono">
             Python 3.12 (WASM Target)
           </span>
+
+          {/* Mode Switcher */}
+          <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 ml-2">
+            <button
+              onClick={() => setEditorMode('editor')}
+              className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded-md transition-all ${
+                editorMode === 'editor'
+                  ? 'bg-purple-600 text-white font-medium shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <FileCode2 className="w-3 h-3" />
+              <span>Editor</span>
+            </button>
+            <button
+              onClick={() => setEditorMode('diff')}
+              className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded-md transition-all ${
+                editorMode === 'diff'
+                  ? 'bg-purple-600 text-white font-medium shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <GitCompare className="w-3 h-3" />
+              <span>Diff Viewer</span>
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {editorMode === 'diff' && (
+            <div className="flex items-center gap-1.5 mr-2">
+              <span className="text-[11px] text-slate-400">Baseline:</span>
+              <select
+                value={selectedSnapshot}
+                onChange={(e) => setSelectedSnapshot(e.target.value)}
+                className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-purple-500 font-mono"
+              >
+                <option value="template">Template Baseline</option>
+                <option value="saved">Last Saved Version</option>
+                <option value="plugin">Plugin Original</option>
+              </select>
+              <button
+                onClick={handleRestoreSnapshot}
+                className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-300 bg-amber-950/60 border border-amber-800/60 hover:bg-amber-900/50 rounded-lg transition-all"
+                title="Restore this baseline version to current editor"
+              >
+                <History className="w-3 h-3" />
+                <span>Restore</span>
+              </button>
+            </div>
+          )}
+
           {onSaveCode && (
             <button
-              onClick={onSaveCode}
+              onClick={handleSaveWrapper}
               className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-lg shadow-sm transition-all active:scale-95"
             >
               <Save className="w-3.5 h-3.5" /> Save Changes
@@ -245,25 +317,45 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
 
       {/* Monaco Editor Container */}
       <div className="flex-1 min-h-[350px]">
-        <Editor
-          height="100%"
-          defaultLanguage="python"
-          theme="vs-dark"
-          value={code}
-          onChange={(val) => setCode(val || '')}
-          onMount={handleEditorDidMount}
-          options={{
-            fontSize: 13,
-            fontFamily: "'JetBrains Mono', monospace",
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-            tabSize: 4,
-            padding: { top: 12, bottom: 12 },
-            lineNumbersMinChars: 3,
-            glyphMargin: true,
-          }}
-        />
+        {editorMode === 'editor' ? (
+          <Editor
+            height="100%"
+            defaultLanguage="python"
+            theme="vs-dark"
+            value={code}
+            onChange={(val) => setCode(val || '')}
+            onMount={handleEditorDidMount}
+            options={{
+              fontSize: 13,
+              fontFamily: "'JetBrains Mono', monospace",
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              tabSize: 4,
+              padding: { top: 12, bottom: 12 },
+              lineNumbersMinChars: 3,
+              glyphMargin: true,
+            }}
+          />
+        ) : (
+          <DiffEditor
+            height="100%"
+            language="python"
+            theme="vs-dark"
+            original={getOriginalCode()}
+            modified={code}
+            options={{
+              fontSize: 13,
+              fontFamily: "'JetBrains Mono', monospace",
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              renderSideBySide: true,
+              readOnly: false,
+              padding: { top: 12, bottom: 12 },
+            }}
+          />
+        )}
       </div>
     </div>
   );
