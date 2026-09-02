@@ -6,6 +6,8 @@ import PluginManager from './components/PluginManager';
 import ExecutionPanel from './components/ExecutionPanel';
 import MetricsDashboard from './components/MetricsDashboard';
 import SecuritySettings from './components/SecuritySettings';
+import AuthModal from './components/AuthModal';
+import TenantManager from './components/TenantManager';
 import ExecutionHistory from './components/ExecutionHistory';
 import { api } from './services/api';
 
@@ -24,6 +26,8 @@ const DEFAULT_CODE = `def process(data):
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('plugins');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [tenantId, setTenantId] = useState('tenant_default');
   
   const [plugins, setPlugins] = useState([
@@ -264,6 +268,7 @@ export default function App() {
           )}
         </main>
       </div>
+      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} onAuthSuccess={(user) => setCurrentUser(user)} />
     </div>
   );
 }
