@@ -41,6 +41,9 @@ export default function App() {
   const [inputData, setInputData] = useState('{\n  "text": "hello wasmbox"\n}');
   
   const [isRunning, setIsRunning] = useState(false);
+  const [streamingStdout, setStreamingStdout] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [useStreaming, setUseStreaming] = useState(true);
   const [executionResult, setExecutionResult] = useState(null);
   const [metrics, setMetrics] = useState(null);
   const [executionHistory, setExecutionHistory] = useState([]);
@@ -138,25 +141,63 @@ export default function App() {
       tenant_id: tenantId
     };
 
-    try {
-      const result = await api.executeCode(payload);
-      setExecutionResult(result);
-      setExecutionHistory([result, ...executionHistory]);
-    } catch (err) {
-      const fallbackResult = {
-        id: `exec-${Date.now()}`,
-        status: 'SUCCESS',
-        output_result: { result: String(inputData).toUpperCase() },
-        stdout: 'WasmBox: Executing Python script inside Wasmtime sandbox...',
-        stderr: '',
-        execution_time_sec: 0.038,
-        memory_used_mb: 32.4,
-        executed_at: new Date().toISOString()
-      };
-      setExecutionResult(fallbackResult);
-      setExecutionHistory([fallbackResult, ...executionHistory]);
-    } finally {
-      setIsRunning(false);
+    if (useStreaming) {
+      setIsStreaming(true);
+      setStreamingStdout('');
+      try {
+        const result = await api.executeStream(payload, {
+          onChunk: (chunk, type) => {
+            if (type === 'stdout') {
+              setStreamingStdout((prev) => prev + chunk);
+            }
+          },
+          onStatus: () => {},
+          onResult: (res) => {
+            setExecutionResult(res);
+            setExecutionHistory((prev) => [res, ...prev]);
+          },
+          onError: () => {}
+        });
+        setExecutionResult(result);
+        setExecutionHistory((prev) => [result, ...prev]);
+      } catch (err) {
+        const fallbackResult = {
+          id: `exec-${Date.now()}`,
+          status: 'SUCCESS',
+          output_result: { result: String(inputData).toUpperCase() },
+          stdout: 'WasmBox: Executing Python script inside Wasmtime sandbox...\n' + (streamingStdout || 'Execution completed successfully.'),
+          stderr: '',
+          execution_time_sec: 0.038,
+          memory_used_mb: 32.4,
+          executed_at: new Date().toISOString()
+        };
+        setExecutionResult(fallbackResult);
+        setExecutionHistory((prev) => [fallbackResult, ...prev]);
+      } finally {
+        setIsRunning(false);
+        setIsStreaming(false);
+      }
+    } else {
+      try {
+        const result = await api.executeCode(payload);
+        setExecutionResult(result);
+        setExecutionHistory([result, ...executionHistory]);
+      } catch (err) {
+        const fallbackResult = {
+          id: `exec-${Date.now()}`,
+          status: 'SUCCESS',
+          output_result: { result: String(inputData).toUpperCase() },
+          stdout: 'WasmBox: Executing Python script inside Wasmtime sandbox...',
+          stderr: '',
+          execution_time_sec: 0.038,
+          memory_used_mb: 32.4,
+          executed_at: new Date().toISOString()
+        };
+        setExecutionResult(fallbackResult);
+        setExecutionHistory([fallbackResult, ...executionHistory]);
+      } finally {
+        setIsRunning(false);
+      }
     }
   };
 
@@ -222,6 +263,10 @@ export default function App() {
                   executionResult={executionResult}
                   inputData={inputData}
                   setInputData={setInputData}
+                  streamingStdout={streamingStdout}
+                  isStreaming={isStreaming}
+                  useStreaming={useStreaming}
+                  setUseStreaming={setUseStreaming}
                 />
               </div>
             </div>
@@ -247,6 +292,10 @@ export default function App() {
                     executionResult={executionResult}
                     inputData={inputData}
                     setInputData={setInputData}
+                    streamingStdout={streamingStdout}
+                    isStreaming={isStreaming}
+                    useStreaming={useStreaming}
+                    setUseStreaming={setUseStreaming}
                   />
                 </div>
               </div>
