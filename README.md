@@ -72,3 +72,22 @@ npm run dev
 
 ## License
 MIT
+
+## Authentication, Multi-Tenancy & RBAC
+
+WasmBox provides enterprise-grade multi-tenancy and role-based access control:
+
+- **JWT Authentication**:
+  - `POST /api/auth/register`: Register user and provision organization tenant.
+  - `POST /api/auth/login`: Authenticate with username/email and receive signed JWT.
+  - `GET /api/auth/me`: Retrieve current profile, permissions, and tenant details.
+- **Tenant & API Key Management**:
+  - `POST /api/tenants`: Create a tenant organization.
+  - `GET /api/tenants`: List tenant organizations.
+  - `POST /api/tenants/{tenant_id}/api-keys`: Generate high-entropy API key with SHA-256 hashed storage.
+  - `GET /api/tenants/{tenant_id}/api-keys`: List active API keys.
+  - `DELETE /api/tenants/{tenant_id}/api-keys/{key_id}`: Revoke an API key.
+- **Role-Based Access Control (RBAC)**:
+  - **Admin**: Full control across tenant management, API key generation, sandbox security settings, plugin CRUD, and execution.
+  - **Developer**: Manage plugins, execute code in Wasmtime sandbox, and inspect metrics/logs. Forbidden from altering system security settings.
+  - **Viewer**: Read-only access to plugins, execution history, and metrics. Forbidden from creating plugins or executing code.
