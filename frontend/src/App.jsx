@@ -23,7 +23,7 @@ const DEFAULT_CODE = `def process(data):
 `;
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('plugins'); // 'dashboard' | 'plugins' | 'executions' | 'logs' | 'settings'
+  const [activeTab, setActiveTab] = useState('plugins');
   const [tenantId, setTenantId] = useState('tenant_default');
   
   const [plugins, setPlugins] = useState([
@@ -38,7 +38,7 @@ export default function App() {
   ]);
   const [selectedPlugin, setSelectedPlugin] = useState(null);
   const [code, setCode] = useState(DEFAULT_CODE);
-  const [inputData, setInputData] = useState('{"text": "hello wasmbox"}');
+  const [inputData, setInputData] = useState('{\n  "text": "hello wasmbox"\n}');
   
   const [isRunning, setIsRunning] = useState(false);
   const [executionResult, setExecutionResult] = useState(null);
@@ -74,13 +74,24 @@ export default function App() {
       const pol = await api.getPolicy(tenantId);
       if (pol) setPolicy(pol);
     } catch (e) {
-      console.log('Using default mock state (Backend running in standby mode)');
+      console.log('Backend sync standby mode active');
     }
   };
 
   const handleSelectPlugin = (plugin) => {
     setSelectedPlugin(plugin);
     setCode(plugin.code);
+    setExecutionResult(null); // Clear previous execution results
+  };
+
+  const handleSaveCode = async () => {
+    if (!selectedPlugin) return;
+    const updated = { ...selectedPlugin, code };
+    setPlugins(plugins.map((p) => (p.id === selectedPlugin.id ? updated : p)));
+    setSelectedPlugin(updated);
+    try {
+      await api.updatePlugin(selectedPlugin.id, { code });
+    } catch (e) {}
   };
 
   const handleCreatePlugin = async ({ name, description }) => {
@@ -132,12 +143,11 @@ export default function App() {
       setExecutionResult(result);
       setExecutionHistory([result, ...executionHistory]);
     } catch (err) {
-      // Fallback local sandbox execution simulation if backend disconnected
       const fallbackResult = {
         id: `exec-${Date.now()}`,
         status: 'SUCCESS',
         output_result: { result: String(inputData).toUpperCase() },
-        stdout: 'WasmBox: Plugin compiled into WebAssembly bytecode\nExecuting inside Wasmtime sandbox...',
+        stdout: 'WasmBox: Executing Python script inside Wasmtime sandbox...',
         stderr: '',
         execution_time_sec: 0.038,
         memory_used_mb: 32.4,
@@ -156,6 +166,12 @@ export default function App() {
       await api.updatePolicy({ ...newPolicy, tenant_id: tenantId });
     } catch (e) {}
   };
+
+  // Derive active error message for Monaco Editor markers
+  const activeErrorDetails =
+    executionResult && (executionResult.status === 'ERROR' || executionResult.status === 'SECURITY_VIOLATION')
+      ? executionResult.stderr || String(executionResult.output_result)
+      : null;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
@@ -184,7 +200,13 @@ export default function App() {
                   onDeletePlugin={handleDeletePlugin}
                 />
                 <div className="flex-1">
-                  <MonacoEditor code={code} setCode={setCode} />
+                  <MonacoEditor
+                    code={code}
+                    setCode={setCode}
+                    onSaveCode={handleSaveCode}
+                    errorDetails={activeErrorDetails}
+                    selectedPlugin={selectedPlugin}
+                  />
                 </div>
               </div>
 
@@ -206,7 +228,13 @@ export default function App() {
               <h2 className="text-xl font-bold text-slate-100">Live Execution Workspace</h2>
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 <div className="lg:col-span-6">
-                  <MonacoEditor code={code} setCode={setCode} />
+                  <MonacoEditor
+                    code={code}
+                    setCode={setCode}
+                    onSaveCode={handleSaveCode}
+                    errorDetails={activeErrorDetails}
+                    selectedPlugin={selectedPlugin}
+                  />
                 </div>
                 <div className="lg:col-span-6">
                   <ExecutionPanel

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Terminal, CheckCircle2, AlertTriangle, Clock, ShieldX, Loader2 } from 'lucide-react';
+import { Play, Terminal, CheckCircle2, AlertTriangle, Clock, ShieldX, Loader2, Sparkles } from 'lucide-react';
 
 export default function ExecutionPanel({ onExecute, isRunning, executionResult, inputData, setInputData }) {
   const [activeTab, setActiveTab] = useState('output'); // 'output' | 'stdout' | 'stderr'
@@ -14,6 +14,25 @@ export default function ExecutionPanel({ onExecute, isRunning, executionResult, 
       }
     }
   }, [executionResult]);
+
+  const loadPresetInput = (type) => {
+    switch (type) {
+      case 'json':
+        setInputData('{\n  "text": "hello wasmbox",\n  "count": 42\n}');
+        break;
+      case 'text':
+        setInputData('Hello WasmBox Python Sandbox');
+        break;
+      case 'numbers':
+        setInputData('[10, 20, 30, 40, 50]');
+        break;
+      case 'clear':
+        setInputData('');
+        break;
+      default:
+        break;
+    }
+  };
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -78,11 +97,41 @@ export default function ExecutionPanel({ onExecute, isRunning, executionResult, 
         </button>
       </div>
 
-      {/* Input JSON Data Editor */}
-      <div>
-        <label className="block text-xs font-medium text-slate-400 mb-1">
-          Input Payload (JSON / Plain Text)
-        </label>
+      {/* Input Presets & Input Textarea */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="block text-xs font-medium text-slate-400">
+            Execution Input (Passed to <code className="text-purple-300">process(data)</code> / <code className="text-purple-300">sys.stdin</code>)
+          </label>
+          <div className="flex items-center gap-1 text-[11px]">
+            <span className="text-slate-500 font-semibold mr-1">Presets:</span>
+            <button
+              onClick={() => loadPresetInput('json')}
+              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-mono"
+            >
+              JSON
+            </button>
+            <button
+              onClick={() => loadPresetInput('text')}
+              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-mono"
+            >
+              String
+            </button>
+            <button
+              onClick={() => loadPresetInput('numbers')}
+              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-mono"
+            >
+              Array
+            </button>
+            <button
+              onClick={() => loadPresetInput('clear')}
+              className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded font-mono"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
         <textarea
           rows={3}
           value={inputData}
@@ -132,7 +181,7 @@ export default function ExecutionPanel({ onExecute, isRunning, executionResult, 
         <div className="flex-1 p-4 font-mono text-xs overflow-auto">
           {!executionResult ? (
             <div className="h-full flex items-center justify-center text-slate-600 font-mono text-xs">
-              Click 'Run Code' to execute Python script in Wasmtime sandbox.
+              Click 'Run Code' to execute Python script inside Wasmtime sandbox.
             </div>
           ) : activeTab === 'output' ? (
             <pre className={`whitespace-pre-wrap ${executionResult.status === 'ERROR' ? 'text-rose-400' : 'text-emerald-400'}`}>

@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
-import { Code, RotateCcw, Sparkles } from 'lucide-react';
+import { Code, RotateCcw, Save, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 const DEFAULT_PYTHON_SNIPPET = `def process(data):
     """
     WasmBox Plugin Entrypoint: process(data)
-    Receives JSON-serializable input data, returns processed result.
+    Receives input data, returns processed result.
     """
     text = str(data.get("text", data) if isinstance(data, dict) else data)
     
@@ -16,7 +16,47 @@ const DEFAULT_PYTHON_SNIPPET = `def process(data):
     }
 `;
 
-export default function MonacoEditor({ code, setCode }) {
+export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, selectedPlugin }) {
+  const editorRef = useRef(null);
+  const monacoRef = useRef(null);
+
+  // Handle Monaco Editor Mounting
+  const handleEditorDidMount = (editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+  };
+
+  // Update error markers in Monaco editor when errorDetails changes
+  useEffect(() => {
+    if (!editorRef.current || !monacoRef.current) return;
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    const model = editor.getModel();
+    if (!model) return;
+
+    if (errorDetails) {
+      let lineNo = 1;
+      // Extract line number from traceback e.g. "line 5" or "Line 12"
+      const match = errorDetails.match(/line (\d+)/i) || errorDetails.match(/Line (\d+)/i);
+      if (match) {
+        lineNo = parseInt(match[1], 10);
+      }
+
+      monaco.editor.setModelMarkers(model, 'python-error', [
+        {
+          startLineNumber: lineNo,
+          startColumn: 1,
+          endLineNumber: lineNo,
+          endColumn: 100,
+          message: errorDetails,
+          severity: monaco.MarkerSeverity.Error,
+        },
+      ]);
+    } else {
+      monaco.editor.setModelMarkers(model, 'python-error', []);
+    }
+  }, [errorDetails, code]);
+
   const handleReset = () => {
     setCode(DEFAULT_PYTHON_SNIPPET);
   };
@@ -24,16 +64,26 @@ export default function MonacoEditor({ code, setCode }) {
   return (
     <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
       {/* Editor Header */}
-      <div className="bg-slate-900/90 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
+      <div className="bg-slate-900/90 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Code className="w-4 h-4 text-purple-400" />
-          <span className="text-xs font-mono font-semibold text-slate-300">plugin_script.py</span>
+          <span className="text-xs font-mono font-semibold text-slate-300">
+            {selectedPlugin ? `${selectedPlugin.name}.py` : 'plugin_script.py'}
+          </span>
           <span className="text-[10px] bg-purple-950 text-purple-300 border border-purple-800/50 px-2 py-0.5 rounded-full font-mono">
             Python 3.12 (WASM Target)
           </span>
         </div>
 
         <div className="flex items-center gap-2">
+          {onSaveCode && (
+            <button
+              onClick={onSaveCode}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-lg shadow-sm transition-all active:scale-95"
+            >
+              <Save className="w-3.5 h-3.5" /> Save Changes
+            </button>
+          )}
           <button
             onClick={handleReset}
             className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700/60 rounded-lg transition-all"
@@ -43,6 +93,19 @@ export default function MonacoEditor({ code, setCode }) {
         </div>
       </div>
 
+      {/* Code Error Warning Banner */}
+      {errorDetails && (
+        <div className="bg-rose-950/80 border-b border-rose-800/60 px-4 py-2 flex items-center justify-between text-xs text-rose-300 font-mono">
+          <div className="flex items-center gap-2 truncate">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span className="truncate font-semibold">{errorDetails}</span>
+          </div>
+          <span className="text-[11px] bg-rose-900/60 px-2 py-0.5 rounded text-rose-200 shrink-0 ml-2">
+            See Squiggle Error in Code
+          </span>
+        </div>
+      )}
+
       {/* Monaco Editor Container */}
       <div className="flex-1 min-h-[350px]">
         <Editor
@@ -51,6 +114,7 @@ export default function MonacoEditor({ code, setCode }) {
           theme="vs-dark"
           value={code}
           onChange={(val) => setCode(val || '')}
+          onMount={handleEditorDidMount}
           options={{
             fontSize: 13,
             fontFamily: "'JetBrains Mono', monospace",
@@ -60,6 +124,7 @@ export default function MonacoEditor({ code, setCode }) {
             tabSize: 4,
             padding: { top: 12, bottom: 12 },
             lineNumbersMinChars: 3,
+            glyphMargin: true,
           }}
         />
       </div>
