@@ -1,15 +1,26 @@
 import ast
-from typing import List, Tuple
-from app.config import settings
+from typing import List, Tuple, Optional, Set
+from app.config import settings, SAFE_STDLIB_MODULES
 
-FORBIDDEN_BUILTINS = {"eval", "exec", "__import__", "open", "compile", "globals", "locals", "input"}
-DISALLOWED_MODULES = {"os", "sys", "subprocess", "ctypes", "socket", "http", "urllib", "requests", "shutil", "pathlib", "threading", "multiprocessing"}
+FORBIDDEN_BUILTINS = {
+    "eval", "exec", "__import__", "open", "compile", "globals", "locals", "input",
+    "breakpoint", "help", "quit", "exit"
+}
+
+DISALLOWED_MODULES = {
+    "os", "sys", "subprocess", "ctypes", "socket", "http", "urllib", "requests",
+    "shutil", "pathlib", "threading", "multiprocessing", "builtins", "posix", "nt",
+    "signal", "asyncio", "pty", "fcntl", "pwd", "grp", "termios", "importlib",
+    "inspect", "code", "codeop", "compileall", "shelve", "pickle", "marshal",
+    "webbrowser", "ftplib", "smtplib", "poplib", "imaplib", "nntplib", "telnetlib",
+    "xmlrpc", "socketserver"
+}
 
 class SecurityValidationError(Exception):
     pass
 
 class ASTSecurityVisitor(ast.NodeVisitor):
-    def __init__(self, allowed_modules: List[str]):
+    def __init__(self, allowed_modules: Set[str]):
         self.allowed_modules = set(allowed_modules)
         self.violations: List[str] = []
 
@@ -34,7 +45,11 @@ class ASTSecurityVisitor(ast.NodeVisitor):
             self.violations.append(f"Forbidden system attribute access: '.{node.func.attr}' (Line {node.lineno})")
         self.generic_visit(node)
 
-def validate_python_code(code: str, custom_allowed_modules: List[str] = None) -> Tuple[bool, List[str]]:
+def validate_python_code(
+    code: str, 
+    custom_allowed_modules: Optional[List[str]] = None,
+    allowed_packages: Optional[List[str]] = None
+) -> Tuple[bool, List[str]]:
     """
     Parses Python source code into an AST and inspects it for security violations.
     Returns (is_valid, list_of_violations).
@@ -44,7 +59,14 @@ def validate_python_code(code: str, custom_allowed_modules: List[str] = None) ->
     except SyntaxError as e:
         return False, [f"Syntax Error: {e.msg} at line {e.lineno}"]
 
-    allowed = custom_allowed_modules if custom_allowed_modules is not None else settings.ALLOWED_MODULES
+    if custom_allowed_modules is not None:
+        allowed = set(custom_allowed_modules)
+    else:
+        allowed = set(settings.ALLOWED_MODULES)
+
+    if allowed_packages:
+        allowed.update(allowed_packages)
+
     visitor = ASTSecurityVisitor(allowed_modules=allowed)
     visitor.visit(tree)
 
@@ -52,3 +74,4 @@ def validate_python_code(code: str, custom_allowed_modules: List[str] = None) ->
         return False, visitor.violations
 
     return True, []
+
