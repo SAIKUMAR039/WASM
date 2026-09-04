@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api"
     
     # MongoDB Configuration
-    MONGODB_URL: str = "mongodb://localhost:27017"
-    MONGODB_DB_NAME: str = "wasmbox_db"
+    MONGODB_URL: str = "mongodb://localhost:27017/wasm"
+    MONGODB_DB_NAME: str = "wasm"
     
     # Sandbox Default Resource Limits
     DEFAULT_MEMORY_LIMIT_MB: int = 128
