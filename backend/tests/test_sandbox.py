@@ -47,3 +47,26 @@ def test_undefined_function_error_execution():
     assert "NameError" in res["output_result"]
     assert "name 'python' is not defined" in res["output_result"]
     assert "Traceback" in res["stderr"]
+
+def test_process_function_with_dict_payload():
+    user_code = """import datetime
+
+def process(data):
+    text = data.get("text", "Default Text") if isinstance(data, dict) else str(data)
+    count = data.get("count", 1) if isinstance(data, dict) else 1
+    return {
+        "status": "PROCESSED",
+        "uppercase_text": text.upper(),
+        "repeated_text": text * count,
+        "character_count": len(text)
+    }
+"""
+    input_payload = {"text": "hello wasmbox", "count": 2}
+    bundled = PythonWasmCompiler.compile_plugin(user_code)
+    runner = WasmSandboxRunner()
+    res = runner.execute(bundled, input_payload)
+
+    assert res["status"] == "SUCCESS"
+    assert isinstance(res["output_result"], dict)
+    assert res["output_result"]["uppercase_text"] == "HELLO WASMBOX"
+    assert res["output_result"]["character_count"] == 13

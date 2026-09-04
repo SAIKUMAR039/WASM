@@ -37,11 +37,19 @@ def _wasmbox_main(raw_input_json):
         except Exception:
             data = raw_input_json
 
-    res = None
+    target_func = None
     if 'process' in globals() and callable(globals()['process']):
-        res = process(data)
+        target_func = globals()['process']
     elif 'main' in globals() and callable(globals()['main']):
-        res = main(data)
+        target_func = globals()['main']
+    elif 'process' in locals() and callable(locals()['process']):
+        target_func = locals()['process']
+    elif 'main' in locals() and callable(locals()['main']):
+        target_func = locals()['main']
+
+    res = None
+    if target_func:
+        res = target_func(data)
 
     if res is not None:
         try:

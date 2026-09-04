@@ -21,7 +21,7 @@ class WasmSandboxRunner:
     def execute(self, bundled_code: str, input_data: Any) -> Dict[str, Any]:
         """
         Executes user Python code inside the sandbox.
-        Captures stdout, stderr, exception tracebacks, and return values.
+        Captures stdout, stderr, exception tracebacks, and process(data) return values.
         """
         start_time = time.perf_counter()
         
@@ -50,8 +50,8 @@ class WasmSandboxRunner:
         timer.start()
         
         try:
-            local_scope = {}
-            global_scope = {"__name__": "__main__"}
+            # Shared scope dictionary so top-level functions (e.g. process) are visible in globals()
+            execution_scope = {"__name__": "__main__"}
             
             # Instruction tracer interrupt for loop timeouts
             def trace_lines(frame, event, arg):
@@ -61,8 +61,8 @@ class WasmSandboxRunner:
 
             sys.settrace(trace_lines)
             
-            # Execute code harness
-            exec(bundled_code, global_scope, local_scope)
+            # Execute code harness with unified scope
+            exec(bundled_code, execution_scope, execution_scope)
             
             captured_raw = stdout_capture.getvalue()
             printed_stdout = captured_raw.split("---WASMSOUTPUT_START---")[0].strip() if "---WASMSOUTPUT_START---" in captured_raw else captured_raw.strip()
