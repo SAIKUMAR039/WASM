@@ -1,17 +1,23 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.database import engine, Base
+from app.database import connect_to_mongo, close_mongo_connection
 from app.routers import plugins, execution, metrics, settings as settings_router
-
-# Initialize database tables
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
+
+# Startup and Shutdown events for MongoDB
+@app.on_event("startup")
+def startup_db_client():
+    connect_to_mongo()
+
+@app.on_event("shutdown")
+def shutdown_db_client():
+    close_mongo_connection()
 
 # Configure CORS for frontend access
 app.add_middleware(
@@ -33,10 +39,11 @@ def root():
     return {
         "status": "online",
         "service": settings.PROJECT_NAME,
+        "database": "MongoDB",
         "version": settings.VERSION,
         "docs": "/docs"
     }
 
 @app.get(f"{settings.API_V1_STR}/health")
 def health_check():
-    return {"status": "healthy", "sandbox": "wasmtime"}
+    return {"status": "healthy", "sandbox": "wasmtime", "database": "mongodb"}
