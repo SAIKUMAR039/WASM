@@ -1,6 +1,15 @@
 version: '3.8'
 
 services:
+  mongodb:
+    image: mongo:latest
+    container_name: wasmbox-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -9,9 +18,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=sqlite:///./wasmbox.db
+      - DB_TYPE=mongodb
+      - MONGODB_URL=mongodb://mongodb:27017
+      - MONGODB_DB_NAME=wasmbox_db
       - DEFAULT_MEMORY_LIMIT_MB=128
       - DEFAULT_EXECUTION_TIMEOUT_SEC=5.0
+    depends_on:
+      - mongodb
     restart: unless-stopped
 
   frontend:
@@ -24,3 +37,6 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+volumes:
+  mongo_data:

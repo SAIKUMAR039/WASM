@@ -5,8 +5,13 @@ class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api"
     
-    # Database
+    # Database Settings
+    DB_TYPE: str = "mongodb"  # "mongodb" or "sqlite"
     DATABASE_URL: str = "sqlite:///./wasmbox.db"
+    
+    # MongoDB Configuration
+    MONGODB_URL: str = "mongodb://localhost:27017"
+    MONGODB_DB_NAME: str = "wasmbox_db"
     
     # Sandbox Default Resource Limits
     DEFAULT_MEMORY_LIMIT_MB: int = 128
