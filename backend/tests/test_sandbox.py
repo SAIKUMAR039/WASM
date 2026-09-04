@@ -22,20 +22,28 @@ def test_ast_validator_forbidden_builtin():
     assert any("Forbidden builtin function call" in v for v in violations)
 
 def test_compiler_harness():
-    user_code = "def process(data):\n    return 'OK'"
+    user_code = "print('Hello World')"
     bundled = PythonWasmCompiler.compile_plugin(user_code)
-    assert "def process(data):" in bundled
+    assert "print('Hello World')" in bundled
     assert "---WASMSOUTPUT_START---" in bundled
 
-def test_wasmtime_runner_execution():
-    user_code = """def process(data):
-    val = data if isinstance(data, str) else str(data)
-    return {"result": val.upper()}
-"""
+def test_top_level_print_execution():
+    user_code = "print('Hello World')"
     bundled = PythonWasmCompiler.compile_plugin(user_code)
     runner = WasmSandboxRunner()
-    res = runner.execute(bundled, "hello wasm")
+    res = runner.execute(bundled, None)
     
-    assert res["status"] in ("SUCCESS", "ERROR")
-    assert res["execution_time_sec"] >= 0.0
-    assert res["memory_used_mb"] > 0
+    assert res["status"] == "SUCCESS"
+    assert "Hello World" in str(res["output_result"])
+    assert "Hello World" in res["stdout"]
+
+def test_undefined_function_error_execution():
+    invalid_code = 'python("Hello world")'
+    bundled = PythonWasmCompiler.compile_plugin(invalid_code)
+    runner = WasmSandboxRunner()
+    res = runner.execute(bundled, None)
+    
+    assert res["status"] == "ERROR"
+    assert "NameError" in res["output_result"]
+    assert "name 'python' is not defined" in res["output_result"]
+    assert "Traceback" in res["stderr"]

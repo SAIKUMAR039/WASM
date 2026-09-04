@@ -1,8 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Play, Terminal, CheckCircle2, AlertTriangle, Clock, ShieldX, Loader2 } from 'lucide-react';
 
 export default function ExecutionPanel({ onExecute, isRunning, executionResult, inputData, setInputData }) {
   const [activeTab, setActiveTab] = useState('output'); // 'output' | 'stdout' | 'stderr'
+
+  // Automatically switch tab on execution complete
+  useEffect(() => {
+    if (executionResult) {
+      if (executionResult.status === 'ERROR' || executionResult.status === 'SECURITY_VIOLATION') {
+        setActiveTab('stderr');
+      } else {
+        setActiveTab('output');
+      }
+    }
+  }, [executionResult]);
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -105,10 +116,12 @@ export default function ExecutionPanel({ onExecute, isRunning, executionResult, 
             <button
               onClick={() => setActiveTab('stderr')}
               className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                activeTab === 'stderr' ? 'bg-slate-800 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'
+                activeTab === 'stderr'
+                  ? 'bg-rose-950/60 text-rose-300 border border-rose-500/30 font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Stderr
+              Stderr / Traceback
             </button>
           </div>
 
@@ -119,10 +132,10 @@ export default function ExecutionPanel({ onExecute, isRunning, executionResult, 
         <div className="flex-1 p-4 font-mono text-xs overflow-auto">
           {!executionResult ? (
             <div className="h-full flex items-center justify-center text-slate-600 font-mono text-xs">
-              Click 'Run Code' to execute plugin inside Wasmtime sandbox.
+              Click 'Run Code' to execute Python script in Wasmtime sandbox.
             </div>
           ) : activeTab === 'output' ? (
-            <pre className="text-emerald-400 whitespace-pre-wrap">
+            <pre className={`whitespace-pre-wrap ${executionResult.status === 'ERROR' ? 'text-rose-400' : 'text-emerald-400'}`}>
               {typeof executionResult.output_result === 'object'
                 ? JSON.stringify(executionResult.output_result, null, 2)
                 : executionResult.output_result || 'No output produced.'}
@@ -133,7 +146,7 @@ export default function ExecutionPanel({ onExecute, isRunning, executionResult, 
             </pre>
           ) : (
             <pre className="text-rose-400 whitespace-pre-wrap">
-              {executionResult.stderr || '(No error logs)'}
+              {executionResult.stderr || executionResult.output_result || '(No error logs)'}
             </pre>
           )}
         </div>

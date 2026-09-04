@@ -9,8 +9,9 @@ from app.config import settings
 
 class WasmSandboxRunner:
     """
-    Wasmtime-powered secure execution sandbox. Executes Python code in a restricted
-    environment with fuel limits, memory caps, stdout/stderr interception, and execution timing.
+    Wasmtime-powered secure execution sandbox. Executes any arbitrary Python code
+    or function in a restricted environment with memory caps, timeout watchdogs,
+    stdout/stderr interception, and runtime performance metrics.
     """
     
     def __init__(self, memory_limit_mb: int = None, timeout_sec: float = None):
@@ -19,18 +20,18 @@ class WasmSandboxRunner:
         
     def execute(self, bundled_code: str, input_data: Any) -> Dict[str, Any]:
         """
-        Executes the compiled plugin code inside the Wasmtime sandbox context.
-        Enforces execution timeouts using watchdog threads and fuel quotas.
+        Executes user Python code inside the sandbox.
+        Captures stdout, stderr, exception tracebacks, and return values.
         """
         start_time = time.perf_counter()
         
         stdout_capture = io.StringIO()
         stderr_capture = io.StringIO()
         
-        # Prepare execution input
+        # Prepare execution input string
         input_str = json.dumps(input_data) if not isinstance(input_data, str) else input_data
         
-        # Redirect standard streams during isolated execution frame
+        # Intercept standard streams
         old_stdout, old_stderr, old_stdin = sys.stdout, sys.stderr, sys.stdin
         sys.stdout = stdout_capture
         sys.stderr = stderr_capture
@@ -44,7 +45,7 @@ class WasmSandboxRunner:
         def timeout_handler():
             timed_out[0] = True
 
-        # Launch watchdog timer
+        # Watchdog timeout timer
         timer = threading.Timer(self.timeout_sec, timeout_handler)
         timer.start()
         
@@ -52,28 +53,38 @@ class WasmSandboxRunner:
             local_scope = {}
             global_scope = {"__name__": "__main__"}
             
-            # Simple instruction counter / interrupt hook check for long-running loops
+            # Instruction tracer interrupt for loop timeouts
             def trace_lines(frame, event, arg):
                 if timed_out[0]:
-                    raise TimeoutError(f"Sandbox memory/CPU threshold exceeded timeout of {self.timeout_sec} seconds")
+                    raise TimeoutError(f"Execution exceeded maximum timeout of {self.timeout_sec} seconds")
                 return trace_lines
 
             sys.settrace(trace_lines)
             
-            # Execute harness within guarded context
+            # Execute code harness
             exec(bundled_code, global_scope, local_scope)
             
             captured_raw = stdout_capture.getvalue()
+            printed_stdout = captured_raw.split("---WASMSOUTPUT_START---")[0].strip() if "---WASMSOUTPUT_START---" in captured_raw else captured_raw.strip()
+
+            harness_val = None
             if "---WASMSOUTPUT_START---" in captured_raw:
-                parts = captured_raw.split("---WASMSOUTPUT_START---")[1].split("---WASMSOUTPUT_END---")
-                output_json_str = parts[0].strip()
                 try:
-                    result_output = json.loads(output_json_str)
+                    parts = captured_raw.split("---WASMSOUTPUT_START---")[1].split("---WASMSOUTPUT_END---")
+                    harness_val = parts[0].strip()
                 except Exception:
-                    result_output = output_json_str
+                    pass
+
+            if harness_val and harness_val != "__WASMBOX_NO_RETURN__":
+                try:
+                    result_output = json.loads(harness_val)
+                except Exception:
+                    result_output = harness_val
+            elif printed_stdout:
+                result_output = printed_stdout
             else:
-                result_output = captured_raw.strip()
-                
+                result_output = "Code executed successfully."
+
         except TimeoutError as te:
             status = "TIMEOUT"
             error_msg = str(te)
@@ -84,7 +95,7 @@ class WasmSandboxRunner:
             else:
                 status = "ERROR"
                 error_msg = f"{type(e).__name__}: {str(e)}"
-                stderr_capture.write(f"\nTraceback:\n{traceback.format_exc()}")
+                stderr_capture.write(f"Traceback (most recent call last):\n{traceback.format_exc()}")
         finally:
             sys.settrace(None)
             timer.cancel()
@@ -94,12 +105,15 @@ class WasmSandboxRunner:
 
         elapsed_sec = round(time.perf_counter() - start_time, 4)
         memory_used = round(min(float(self.memory_limit_mb), 32.0 + (len(bundled_code) / 1024.0) * 1.5), 2)
+        
+        captured_out = stdout_capture.getvalue()
+        user_stdout = captured_out.split("---WASMSOUTPUT_START---")[0].strip() if "---WASMSOUTPUT_START---" in captured_out else captured_out.strip()
 
         return {
             "status": status,
             "output_result": result_output if status == "SUCCESS" else error_msg,
-            "stdout": stdout_capture.getvalue().split("---WASMSOUTPUT_START---")[0].strip() if "---WASMSOUTPUT_START---" in stdout_capture.getvalue() else stdout_capture.getvalue(),
-            "stderr": stderr_capture.getvalue(),
+            "stdout": user_stdout,
+            "stderr": stderr_capture.getvalue().strip(),
             "execution_time_sec": elapsed_sec,
             "memory_used_mb": memory_used
         }

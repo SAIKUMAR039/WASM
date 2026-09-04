@@ -6,8 +6,9 @@ class WasmCompilationError(Exception):
 
 class PythonWasmCompiler:
     """
-    Transforms user-provided Python plugin code into a WebAssembly-compatible 
-    executable module harness. Standardizes entry point `process(data)` execution.
+    Transforms user-provided Python code into an execution harness module.
+    Supports top-level scripts (print statements, calculations) as well as 
+    structured function entrypoints like process(data) or main(data).
     """
     
     ENTRY_HARNESS_TEMPLATE = """# WasmBox Generated Execution Harness
@@ -29,19 +30,25 @@ import zlib
 # --- USER PLUGIN CODE END ---
 
 def _wasmbox_main(raw_input_json):
-    try:
-        data = json.loads(raw_input_json) if raw_input_json else None
-    except Exception as e:
-        data = raw_input_json
+    data = None
+    if raw_input_json:
+        try:
+            data = json.loads(raw_input_json)
+        except Exception:
+            data = raw_input_json
 
+    res = None
     if 'process' in globals() and callable(globals()['process']):
         res = process(data)
     elif 'main' in globals() and callable(globals()['main']):
         res = main(data)
-    else:
-        res = {{"error": "No process(data) or main(data) function defined in plugin"}}
-    
-    return json.dumps(res)
+
+    if res is not None:
+        try:
+            return json.dumps(res)
+        except Exception:
+            return str(res)
+    return "__WASMBOX_NO_RETURN__"
 
 if __name__ == "__main__":
     input_str = sys.stdin.read() if not sys.stdin.isatty() else ""
