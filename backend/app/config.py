@@ -1,4 +1,20 @@
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
+
+SAFE_STDLIB_MODULES = [
+    # Core formats & encoding
+    "json", "base64", "zlib", "csv", "struct",
+    # Math & numbers
+    "math", "cmath", "decimal", "fractions", "numbers", "statistics", "random",
+    # Text processing
+    "re", "string", "unicodedata", "difflib", "textwrap",
+    # Collections & functional
+    "collections", "itertools", "functools", "operator", "bisect", "heapq", "array",
+    # Types & data structures
+    "typing", "dataclasses", "enum", "copy",
+    # Safe utilities
+    "datetime", "time", "uuid", "hashlib", "ipaddress",
+]
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "WasmBox"
@@ -17,9 +33,14 @@ class Settings(BaseSettings):
     # Security Policies
     ALLOW_NETWORK_ACCESS: bool = False
     ALLOW_FILESYSTEM_WRITE: bool = False
-    ALLOWED_MODULES: list[str] = ["math", "json", "re", "datetime", "random", "hashlib", "collections", "itertools", "functools", "base64", "zlib"]
+    ALLOWED_MODULES: list[str] = list(SAFE_STDLIB_MODULES)
     
-    class Config:
-        case_sensitive = True
+    # Compiler Cache & Wheels Configuration
+    CACHE_DIR: str = ".wasmbox_cache"
+    ENABLE_COMPILER_CACHE: bool = True
+    WHEELS_DIR: str = "wheels"
+    ALLOWED_WHEELS: list[str] = []
+
+    model_config = ConfigDict(case_sensitive=True)
 
 settings = Settings()
