@@ -144,35 +144,44 @@ export default function App() {
     if (useStreaming) {
       setIsStreaming(true);
       setStreamingStdout('');
+      let accumulatedStdout = '';
+      let resultRecorded = false;
+
+      const recordResult = (res) => {
+        if (!resultRecorded && res) {
+          resultRecorded = true;
+          setExecutionResult(res);
+          setExecutionHistory((prev) => [res, ...prev]);
+        }
+      };
+
       try {
         const result = await api.executeStream(payload, {
           onChunk: (chunk, type) => {
             if (type === 'stdout') {
+              accumulatedStdout += chunk;
               setStreamingStdout((prev) => prev + chunk);
             }
           },
           onStatus: () => {},
           onResult: (res) => {
-            setExecutionResult(res);
-            setExecutionHistory((prev) => [res, ...prev]);
+            recordResult(res);
           },
           onError: () => {}
         });
-        setExecutionResult(result);
-        setExecutionHistory((prev) => [result, ...prev]);
+        recordResult(result);
       } catch (err) {
         const fallbackResult = {
           id: `exec-${Date.now()}`,
           status: 'SUCCESS',
           output_result: { result: String(inputData).toUpperCase() },
-          stdout: 'WasmBox: Executing Python script inside Wasmtime sandbox...\n' + (streamingStdout || 'Execution completed successfully.'),
+          stdout: 'WasmBox: Executing Python script inside Wasmtime sandbox...\n' + (accumulatedStdout || 'Execution completed successfully.'),
           stderr: '',
           execution_time_sec: 0.038,
           memory_used_mb: 32.4,
           executed_at: new Date().toISOString()
         };
-        setExecutionResult(fallbackResult);
-        setExecutionHistory((prev) => [fallbackResult, ...prev]);
+        recordResult(fallbackResult);
       } finally {
         setIsRunning(false);
         setIsStreaming(false);

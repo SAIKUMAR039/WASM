@@ -1,6 +1,7 @@
 import uuid
 import json
 import asyncio
+import threading
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from app.database import get_db
@@ -114,10 +115,20 @@ async def handle_websocket_execution(websocket: WebSocket, db=None):
     tenant_id = data.get("tenant_id", "tenant_default")
     input_data = data.get("input_data", "HELLO WORLD")
 
-    if plugin_id and db is not None:
-        plugin = db["plugins"].find_one({"_id": plugin_id, "tenant_id": tenant_id})
-        if plugin:
-            code_to_run = plugin.get("code")
+    if plugin_id:
+        plugin = None
+        if db is not None:
+            plugin = db["plugins"].find_one({"_id": plugin_id, "tenant_id": tenant_id})
+        if not plugin:
+            await websocket.send_json({
+                "type": "error",
+                "error": "Plugin not found for tenant",
+                "status_code": 404,
+                "detail": "Plugin not found for tenant"
+            })
+            await websocket.close(code=1008, reason="Plugin not found for tenant")
+            return
+        code_to_run = plugin.get("code")
 
     if not code_to_run or not str(code_to_run).strip():
         await websocket.send_json({
@@ -190,9 +201,13 @@ async def handle_websocket_execution(websocket: WebSocket, db=None):
     bundled = PythonWasmCompiler.compile_plugin(code_to_run)
     runner = WasmSandboxRunner(memory_limit_mb=mem_limit, timeout_sec=timeout_sec)
 
-    # Run execution in worker thread
-    runner_task = asyncio.to_thread(runner.execute, bundled, input_data, stream_callback)
+    cancel_event = threading.Event()
+    # Run execution in worker thread with cancellation support
+    runner_task = asyncio.create_task(
+        asyncio.to_thread(runner.execute, bundled, input_data, stream_callback, cancel_event)
+    )
 
+    disconnected = False
     while not runner_task.done() or not stream_queue.empty():
         try:
             item = await asyncio.wait_for(stream_queue.get(), timeout=0.04)
@@ -206,11 +221,38 @@ async def handle_websocket_execution(websocket: WebSocket, db=None):
         except asyncio.TimeoutError:
             continue
         except WebSocketDisconnect:
-            return
+            disconnected = True
+            break
         except Exception:
             break
 
-    res = await runner_task
+    if disconnected:
+        cancel_event.set()
+        runner_task.cancel()
+        exec_doc = {
+            "_id": exec_id,
+            "id": exec_id,
+            "plugin_id": plugin_id,
+            "tenant_id": tenant_id,
+            "status": "CANCELLED",
+            "input_data": input_data,
+            "output_result": "Execution cancelled due to client disconnect",
+            "stdout": "",
+            "stderr": "Client disconnected during execution",
+            "execution_time_sec": round((datetime.utcnow() - now).total_seconds(), 4),
+            "memory_used_mb": 0.0,
+            "executed_at": now
+        }
+        if db is not None:
+            db["executions"].insert_one(exec_doc)
+        else:
+            _memory_executions.append(exec_doc)
+        return
+
+    try:
+        res = await runner_task
+    except asyncio.CancelledError:
+        return
 
     exec_doc = {
         "_id": exec_id,

@@ -100,8 +100,8 @@ def get_metrics_trends(tenant_id: str = "tenant_default", limit: int = 30, db=De
                 "plugin_id": d.get("plugin_id")
             })
 
-    # Baseline seed points if database has few executions
-    if len(trends) < 5:
+    # Baseline seed points only when in demo / disconnected mode (db is None)
+    if db is None:
         base_time = datetime.utcnow()
         seeds = []
         for i in range(12):
@@ -116,7 +116,7 @@ def get_metrics_trends(tenant_id: str = "tenant_default", limit: int = 30, db=De
                 "status": "SUCCESS" if i != 9 else "ERROR",
                 "plugin_id": "default-1"
             })
-        return trends + seeds
+        return seeds
 
     return trends
 

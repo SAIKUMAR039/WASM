@@ -18,10 +18,20 @@ const DEFAULT_PYTHON_SNIPPET = `def process(data):
 
 export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, selectedPlugin }) {
   const editorRef = useRef(null);
+  const diffEditorRef = useRef(null);
   const monacoRef = useRef(null);
   const [editorMode, setEditorMode] = useState('editor'); // 'editor' | 'diff'
   const [savedSnapshot, setSavedSnapshot] = useState(code);
   const [selectedSnapshot, setSelectedSnapshot] = useState('template');
+
+  // Synchronize savedSnapshot when switching plugins
+  useEffect(() => {
+    if (selectedPlugin) {
+      setSavedSnapshot(selectedPlugin.code || code);
+    } else {
+      setSavedSnapshot(code);
+    }
+  }, [selectedPlugin?.id]);
 
   // Handle Monaco Editor Mounting
   const handleEditorDidMount = (editor, monaco) => {
@@ -39,6 +49,24 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
             startColumn: word.startColumn,
             endColumn: word.endColumn,
           };
+
+          const modelText = model.getValue();
+          const hasJsonImport = /\bimport\s+json\b|\bfrom\s+json\s+import\b/.test(modelText);
+          const hasHashlibImport = /\bimport\s+hashlib\b|\bfrom\s+hashlib\s+import\b/.test(modelText);
+
+          const jsonAdditionalEdits = hasJsonImport ? [] : [
+            {
+              range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+              text: 'import json\n',
+            },
+          ];
+
+          const hashlibAdditionalEdits = hasHashlibImport ? [] : [
+            {
+              range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+              text: 'import hashlib\n',
+            },
+          ];
 
           const suggestions = [
             {
@@ -139,6 +167,7 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
               documentation: 'Deserialize string or byte/bytearray to a Python object.',
               insertText: 'json.loads(${1:string_data})',
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              additionalTextEdits: jsonAdditionalEdits,
               range,
             },
             {
@@ -147,6 +176,7 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
               documentation: 'Serialize obj to a JSON formatted str.',
               insertText: 'json.dumps(${1:obj}, indent=2)',
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              additionalTextEdits: jsonAdditionalEdits,
               range,
             },
             {
@@ -155,6 +185,7 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
               documentation: 'Return a sha256 hash object.',
               insertText: 'hashlib.sha256(${1:data}.encode("utf-8")).hexdigest()',
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              additionalTextEdits: hashlibAdditionalEdits,
               range,
             },
           ];
@@ -214,6 +245,17 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
   const handleSaveWrapper = () => {
     setSavedSnapshot(code);
     if (onSaveCode) onSaveCode();
+  };
+
+  const handleDiffEditorDidMount = (diffEditor) => {
+    diffEditorRef.current = diffEditor;
+    const modifiedEditor = diffEditor.getModifiedEditor();
+    if (modifiedEditor) {
+      modifiedEditor.onDidChangeModelContent(() => {
+        const val = modifiedEditor.getValue();
+        setCode(val);
+      });
+    }
   };
 
   const handleRestoreSnapshot = () => {
@@ -344,6 +386,7 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
             theme="vs-dark"
             original={getOriginalCode()}
             modified={code}
+            onMount={handleDiffEditorDidMount}
             options={{
               fontSize: 13,
               fontFamily: "'JetBrains Mono', monospace",

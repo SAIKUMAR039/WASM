@@ -4,8 +4,58 @@ import json
 import io
 import threading
 import traceback
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from app.config import settings
+
+_local = threading.local()
+_orig_stdout = sys.stdout
+_orig_stderr = sys.stderr
+_orig_stdin = sys.stdin
+
+class ThreadLocalStreamProxy(io.TextIOBase):
+    """
+    Thread-local stream proxy that routes write/read calls to the current
+    thread's captured stream if set, falling back to the original process stream.
+    This prevents cross-thread output bleeding during concurrent executions.
+    """
+    def __init__(self, stream_type: str, default_stream):
+        self._stream_type = stream_type
+        self._default_stream = default_stream
+
+    def _get_target(self):
+        target = getattr(_local, self._stream_type, None)
+        return target if target is not None else self._default_stream
+
+    def write(self, s: str) -> int:
+        return self._get_target().write(s)
+
+    def flush(self):
+        target = self._get_target()
+        if hasattr(target, "flush"):
+            return target.flush()
+
+    def read(self, *args, **kwargs):
+        return self._get_target().read(*args, **kwargs)
+
+    def readline(self, *args, **kwargs):
+        return self._get_target().readline(*args, **kwargs)
+
+    def isatty(self) -> bool:
+        target = self._get_target()
+        if hasattr(target, "isatty"):
+            return target.isatty()
+        return False
+
+    def __getattr__(self, name):
+        return getattr(self._get_target(), name)
+
+# Install thread-local stream proxies once
+if not isinstance(sys.stdout, ThreadLocalStreamProxy):
+    sys.stdout = ThreadLocalStreamProxy("stdout", _orig_stdout)
+if not isinstance(sys.stderr, ThreadLocalStreamProxy):
+    sys.stderr = ThreadLocalStreamProxy("stderr", _orig_stderr)
+if not isinstance(sys.stdin, ThreadLocalStreamProxy):
+    sys.stdin = ThreadLocalStreamProxy("stdin", _orig_stdin)
 
 class StreamingCaptureIO(io.StringIO):
     """
@@ -37,11 +87,18 @@ class WasmSandboxRunner:
         self.memory_limit_mb = memory_limit_mb or settings.DEFAULT_MEMORY_LIMIT_MB
         self.timeout_sec = timeout_sec or settings.DEFAULT_EXECUTION_TIMEOUT_SEC
         
-    def execute(self, bundled_code: str, input_data: Any, stream_callback: Any = None) -> Dict[str, Any]:
+    def execute(
+        self,
+        bundled_code: str,
+        input_data: Any,
+        stream_callback: Any = None,
+        cancel_event: Optional[threading.Event] = None
+    ) -> Dict[str, Any]:
         """
         Executes user Python code inside the sandbox.
         Captures stdout, stderr, exception tracebacks, and process(data) return values.
         Optionally streams stdout/stderr chunks via stream_callback.
+        Can be aborted prematurely via cancel_event.
         """
         start_time = time.perf_counter()
         
@@ -51,11 +108,18 @@ class WasmSandboxRunner:
         # Prepare execution input string
         input_str = json.dumps(input_data) if not isinstance(input_data, str) else input_data
         
-        # Intercept standard streams
-        old_stdout, old_stderr, old_stdin = sys.stdout, sys.stderr, sys.stdin
-        sys.stdout = stdout_capture
-        sys.stderr = stderr_capture
-        sys.stdin = io.StringIO(input_str)
+        # Ensure thread-local proxy is active on standard streams
+        if not isinstance(sys.stdout, ThreadLocalStreamProxy):
+            sys.stdout = ThreadLocalStreamProxy("stdout", sys.stdout)
+        if not isinstance(sys.stderr, ThreadLocalStreamProxy):
+            sys.stderr = ThreadLocalStreamProxy("stderr", sys.stderr)
+        if not isinstance(sys.stdin, ThreadLocalStreamProxy):
+            sys.stdin = ThreadLocalStreamProxy("stdin", sys.stdin)
+
+        # Bind thread-local streams for this execution
+        _local.stdout = stdout_capture
+        _local.stderr = stderr_capture
+        _local.stdin = io.StringIO(input_str)
         
         status = "SUCCESS"
         result_output = None
@@ -73,11 +137,16 @@ class WasmSandboxRunner:
             # Shared scope dictionary so top-level functions (e.g. process) are visible in globals()
             execution_scope = {"__name__": "__main__"}
             
-            # Instruction tracer interrupt for loop timeouts
+            # Instruction tracer interrupt for loop timeouts and cancellation
             def trace_lines(frame, event, arg):
+                if cancel_event is not None and cancel_event.is_set():
+                    raise InterruptedError("Execution cancelled")
                 if timed_out[0]:
                     raise TimeoutError(f"Execution exceeded maximum timeout of {self.timeout_sec} seconds")
                 return trace_lines
+
+            if cancel_event is not None and cancel_event.is_set():
+                raise InterruptedError("Execution cancelled")
 
             sys.settrace(trace_lines)
             
@@ -105,6 +174,9 @@ class WasmSandboxRunner:
             else:
                 result_output = "Code executed successfully."
 
+        except InterruptedError as ie:
+            status = "CANCELLED"
+            error_msg = str(ie)
         except TimeoutError as te:
             status = "TIMEOUT"
             error_msg = str(te)
@@ -119,9 +191,9 @@ class WasmSandboxRunner:
         finally:
             sys.settrace(None)
             timer.cancel()
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
-            sys.stdin = old_stdin
+            _local.stdout = None
+            _local.stderr = None
+            _local.stdin = None
 
         elapsed_sec = round(time.perf_counter() - start_time, 4)
         memory_used = round(min(float(self.memory_limit_mb), 32.0 + (len(bundled_code) / 1024.0) * 1.5), 2)

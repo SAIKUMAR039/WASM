@@ -41,6 +41,7 @@ export const api = {
 
       let socket;
       let isSettled = false;
+      let requestSent = false;
 
       try {
         socket = new WebSocket(wsUrl);
@@ -59,7 +60,12 @@ export const api = {
 
       socket.onopen = () => {
         if (onStatus) onStatus('RUNNING');
-        socket.send(JSON.stringify(payload));
+        try {
+          socket.send(JSON.stringify(payload));
+          requestSent = true;
+        } catch (err) {
+          console.warn('Failed to send payload over WebSocket:', err);
+        }
       };
 
       socket.onmessage = (event) => {
@@ -88,24 +94,48 @@ export const api = {
 
       socket.onerror = (err) => {
         if (!isSettled) {
-          console.warn('WebSocket stream error, fallback to REST execute:', err);
-          api.executeCode(payload)
-            .then((res) => {
-              isSettled = true;
-              if (onResult) onResult(res);
-              resolve(res);
-            })
-            .catch((e) => {
-              isSettled = true;
-              if (onError) onError(e);
-              reject(e);
-            });
+          if (!requestSent) {
+            console.warn('WebSocket stream error before request sent, fallback to REST execute:', err);
+            api.executeCode(payload)
+              .then((res) => {
+                isSettled = true;
+                if (onResult) onResult(res);
+                resolve(res);
+              })
+              .catch((e) => {
+                isSettled = true;
+                if (onError) onError(e);
+                reject(e);
+              });
+          } else {
+            isSettled = true;
+            const streamErr = new Error('WebSocket stream error during execution');
+            if (onError) onError(streamErr);
+            reject(streamErr);
+          }
         }
       };
 
       socket.onclose = () => {
         if (!isSettled) {
+          isSettled = true;
           if (onStatus) onStatus('DISCONNECTED');
+          if (!requestSent) {
+            console.warn('WebSocket closed before request sent, fallback to REST execute');
+            api.executeCode(payload)
+              .then((res) => {
+                if (onResult) onResult(res);
+                resolve(res);
+              })
+              .catch((e) => {
+                if (onError) onError(e);
+                reject(e);
+              });
+          } else {
+            const closeErr = new Error('WebSocket connection closed unexpectedly before completion');
+            if (onError) onError(closeErr);
+            reject(closeErr);
+          }
         }
       };
     });
