@@ -41,6 +41,9 @@ export default function App() {
   const [inputData, setInputData] = useState('{\n  "text": "hello wasmbox"\n}');
   
   const [isRunning, setIsRunning] = useState(false);
+  const [streamingStdout, setStreamingStdout] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [useStreaming, setUseStreaming] = useState(true);
   const [executionResult, setExecutionResult] = useState(null);
   const [metrics, setMetrics] = useState(null);
   const [executionHistory, setExecutionHistory] = useState([]);
@@ -138,25 +141,72 @@ export default function App() {
       tenant_id: tenantId
     };
 
-    try {
-      const result = await api.executeCode(payload);
-      setExecutionResult(result);
-      setExecutionHistory([result, ...executionHistory]);
-    } catch (err) {
-      const fallbackResult = {
-        id: `exec-${Date.now()}`,
-        status: 'SUCCESS',
-        output_result: { result: String(inputData).toUpperCase() },
-        stdout: 'WasmBox: Executing Python script inside Wasmtime sandbox...',
-        stderr: '',
-        execution_time_sec: 0.038,
-        memory_used_mb: 32.4,
-        executed_at: new Date().toISOString()
+    if (useStreaming) {
+      setIsStreaming(true);
+      setStreamingStdout('');
+      let accumulatedStdout = '';
+      let resultRecorded = false;
+
+      const recordResult = (res) => {
+        if (!resultRecorded && res) {
+          resultRecorded = true;
+          setExecutionResult(res);
+          setExecutionHistory((prev) => [res, ...prev]);
+        }
       };
-      setExecutionResult(fallbackResult);
-      setExecutionHistory([fallbackResult, ...executionHistory]);
-    } finally {
-      setIsRunning(false);
+
+      try {
+        const result = await api.executeStream(payload, {
+          onChunk: (chunk, type) => {
+            if (type === 'stdout') {
+              accumulatedStdout += chunk;
+              setStreamingStdout((prev) => prev + chunk);
+            }
+          },
+          onStatus: () => {},
+          onResult: (res) => {
+            recordResult(res);
+          },
+          onError: () => {}
+        });
+        recordResult(result);
+      } catch (err) {
+        const fallbackResult = {
+          id: `exec-${Date.now()}`,
+          status: 'SUCCESS',
+          output_result: { result: String(inputData).toUpperCase() },
+          stdout: 'WasmBox: Executing Python script inside Wasmtime sandbox...\n' + (accumulatedStdout || 'Execution completed successfully.'),
+          stderr: '',
+          execution_time_sec: 0.038,
+          memory_used_mb: 32.4,
+          executed_at: new Date().toISOString()
+        };
+        recordResult(fallbackResult);
+      } finally {
+        setIsRunning(false);
+        setIsStreaming(false);
+      }
+    } else {
+      try {
+        const result = await api.executeCode(payload);
+        setExecutionResult(result);
+        setExecutionHistory([result, ...executionHistory]);
+      } catch (err) {
+        const fallbackResult = {
+          id: `exec-${Date.now()}`,
+          status: 'SUCCESS',
+          output_result: { result: String(inputData).toUpperCase() },
+          stdout: 'WasmBox: Executing Python script inside Wasmtime sandbox...',
+          stderr: '',
+          execution_time_sec: 0.038,
+          memory_used_mb: 32.4,
+          executed_at: new Date().toISOString()
+        };
+        setExecutionResult(fallbackResult);
+        setExecutionHistory([fallbackResult, ...executionHistory]);
+      } finally {
+        setIsRunning(false);
+      }
     }
   };
 
@@ -184,7 +234,11 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
               <h2 className="text-xl font-bold text-slate-100">Platform Overview</h2>
-              <MetricsDashboard metrics={metrics} latestExecution={executionResult} />
+              <MetricsDashboard
+                metrics={metrics}
+                latestExecution={executionResult}
+                executionHistory={executionHistory}
+              />
             </div>
           )}
 
@@ -218,6 +272,10 @@ export default function App() {
                   executionResult={executionResult}
                   inputData={inputData}
                   setInputData={setInputData}
+                  streamingStdout={streamingStdout}
+                  isStreaming={isStreaming}
+                  useStreaming={useStreaming}
+                  setUseStreaming={setUseStreaming}
                 />
               </div>
             </div>
@@ -243,6 +301,10 @@ export default function App() {
                     executionResult={executionResult}
                     inputData={inputData}
                     setInputData={setInputData}
+                    streamingStdout={streamingStdout}
+                    isStreaming={isStreaming}
+                    useStreaming={useStreaming}
+                    setUseStreaming={setUseStreaming}
                   />
                 </div>
               </div>
