@@ -1,5 +1,4 @@
 import uuid
-import json
 import asyncio
 import threading
 from datetime import datetime
@@ -7,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from app.database import get_db
 from app.schemas import ExecutionRequest, ExecutionResponse
 from app.pipeline.validator import validate_python_code
-from app.pipeline.compiler import PythonWasmCompiler
+from app.pipeline.compiler_cache import compiler_cache
 from app.sandbox.wasmtime_runner import WasmSandboxRunner
 
 router = APIRouter(prefix="/execute", tags=["Execution"])
@@ -68,7 +67,7 @@ def execute_code(req: ExecutionRequest, db=Depends(get_db)):
         return exec_doc
 
     # 2. Package into WASM Harness
-    bundled = PythonWasmCompiler.compile_plugin(code_to_run)
+    bundled = compiler_cache.compile(code_to_run)
 
     # 3. Execute in Wasmtime Sandbox Runner
     runner = WasmSandboxRunner(memory_limit_mb=mem_limit, timeout_sec=timeout_sec)
@@ -198,7 +197,7 @@ async def handle_websocket_execution(websocket: WebSocket, db=None):
     def stream_callback(stream_type: str, chunk: str):
         loop.call_soon_threadsafe(stream_queue.put_nowait, (stream_type, chunk))
 
-    bundled = PythonWasmCompiler.compile_plugin(code_to_run)
+    bundled = compiler_cache.compile(code_to_run)
     runner = WasmSandboxRunner(memory_limit_mb=mem_limit, timeout_sec=timeout_sec)
 
     cancel_event = threading.Event()
@@ -298,4 +297,3 @@ async def websocket_route_ws(websocket: WebSocket, db=Depends(get_db)):
 @router.websocket("/ws/execute")
 async def websocket_route_ws_execute(websocket: WebSocket, db=Depends(get_db)):
     await handle_websocket_execution(websocket, db)
-

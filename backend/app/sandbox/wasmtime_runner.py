@@ -133,6 +133,35 @@ class WasmSandboxRunner:
         timer = threading.Timer(self.timeout_sec, timeout_handler)
         timer.start()
         
+        # Resolve executable code object and source
+        code_obj = None
+        source_to_exec = ""
+        is_cache_hit = getattr(bundled_code, "is_cache_hit", False)
+        cache_key = getattr(bundled_code, "cache_key", None)
+
+        if hasattr(bundled_code, "code_object") and bundled_code.code_object is not None:
+            code_obj = bundled_code.code_object
+            source_to_exec = str(bundled_code)
+        elif isinstance(bundled_code, (bytes, bytearray)):
+            if bytes(bundled_code).startswith(b"\x00asm"):
+                from app.pipeline.cache import CompiledWasmArtifact
+                art = CompiledWasmArtifact.from_wasm_bytes(bytes(bundled_code))
+                code_obj = art.code_object
+                source_to_exec = str(art)
+                cache_key = art.cache_key
+            else:
+                source_to_exec = bundled_code.decode("utf-8")
+        elif isinstance(bundled_code, str):
+            import os
+            if bundled_code.endswith(".wasm") and os.path.exists(bundled_code):
+                from app.pipeline.cache import CompiledWasmArtifact
+                art = CompiledWasmArtifact.from_wasm_file(bundled_code)
+                code_obj = art.code_object
+                source_to_exec = str(art)
+                cache_key = art.cache_key
+            else:
+                source_to_exec = bundled_code
+
         try:
             # Shared scope dictionary so top-level functions (e.g. process) are visible in globals()
             execution_scope = {"__name__": "__main__"}
@@ -150,8 +179,11 @@ class WasmSandboxRunner:
 
             sys.settrace(trace_lines)
             
-            # Execute code harness with unified scope
-            exec(bundled_code, execution_scope, execution_scope)
+            # Execute code harness with unified scope (using pre-compiled code object if available)
+            if code_obj is not None:
+                exec(code_obj, execution_scope, execution_scope)
+            else:
+                exec(source_to_exec, execution_scope, execution_scope)
             
             captured_raw = stdout_capture.getvalue()
             printed_stdout = captured_raw.split("---WASMSOUTPUT_START---")[0].strip() if "---WASMSOUTPUT_START---" in captured_raw else captured_raw.strip()
@@ -207,5 +239,6 @@ class WasmSandboxRunner:
             "stdout": user_stdout,
             "stderr": stderr_capture.getvalue().strip(),
             "execution_time_sec": elapsed_sec,
-            "memory_used_mb": memory_used
+            "memory_used_mb": memory_used,
+            "is_cache_hit": is_cache_hit
         }
