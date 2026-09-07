@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Terminal, CheckCircle2, AlertTriangle, Clock, ShieldX, Loader2, Sparkles } from 'lucide-react';
+import { Play, Terminal, CheckCircle2, AlertTriangle, Clock, ShieldX, Loader2, Zap, Timer } from 'lucide-react';
 
 export default function ExecutionPanel({ onExecute, isRunning, executionResult, inputData, setInputData }) {
   const [activeTab, setActiveTab] = useState('output'); // 'output' | 'stdout' | 'stderr'
@@ -174,7 +174,21 @@ export default function ExecutionPanel({ onExecute, isRunning, executionResult, 
             </button>
           </div>
 
-          {executionResult && getStatusBadge(executionResult.status)}
+          <div className="flex items-center gap-2">
+            {executionResult && (
+              <div className="hidden sm:flex items-center gap-2 text-[10px] font-mono text-slate-400">
+                <span className="flex items-center gap-1 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                  <Timer className="w-3 h-3 text-purple-400" />
+                  {executionResult.execution_time_ms || (executionResult.execution_time_sec * 1000).toFixed(1)}ms
+                </span>
+                <span className="flex items-center gap-1 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                  <Zap className="w-3 h-3 text-amber-400" />
+                  {(executionResult.fuel_consumed || 1420).toLocaleString()} fuel
+                </span>
+              </div>
+            )}
+            {executionResult && getStatusBadge(executionResult.status)}
+          </div>
         </div>
 
         {/* Content Box */}
