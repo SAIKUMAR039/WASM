@@ -1,6 +1,7 @@
 import pytest
 from app.pipeline.validator import validate_python_code
 from app.pipeline.compiler import PythonWasmCompiler
+from app.pipeline.schema_validator import validate_json_payload
 from app.sandbox.wasmtime_runner import WasmSandboxRunner
 
 def test_ast_validator_safe_code():
@@ -70,3 +71,15 @@ def process(data):
     assert isinstance(res["output_result"], dict)
     assert res["output_result"]["uppercase_text"] == "HELLO WASMBOX"
     assert res["output_result"]["character_count"] == 13
+
+def test_json_schema_validator():
+    schema = {"type": "object", "required": ["text", "count"]}
+    valid_payload = {"text": "test", "count": 5}
+    invalid_payload = {"text": "test"}
+
+    ok, err = validate_json_payload(valid_payload, schema)
+    assert ok is True
+
+    ok2, err2 = validate_json_payload(invalid_payload, schema)
+    assert ok2 is False
+    assert "Missing required payload keys" in err2
