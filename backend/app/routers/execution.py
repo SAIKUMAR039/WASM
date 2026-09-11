@@ -1,11 +1,12 @@
 import uuid
 import json
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from app.database import get_db
 from app.schemas import ExecutionRequest, ExecutionResponse
 from app.pipeline.validator import validate_python_code
 from app.pipeline.compiler import PythonWasmCompiler
+from app.pipeline.rate_limiter import rate_limiter
 from app.sandbox.wasmtime_runner import WasmSandboxRunner
 
 router = APIRouter(prefix="/execute", tags=["Execution"])
@@ -16,7 +17,15 @@ _memory_executions = []
 def execute_code(req: ExecutionRequest, db=Depends(get_db)):
     """
     Executes Python code inside the Wasmtime sandbox and records output/metrics document in MongoDB.
+    Enforces sliding window tenant execution rate limits.
     """
+    allowed, remaining = rate_limiter.check_rate_limit(req.tenant_id)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded for tenant '{req.tenant_id}'. Max 60 executions per minute allowed."
+        )
+
     code_to_run = req.code
     plugin_id = req.plugin_id
 
