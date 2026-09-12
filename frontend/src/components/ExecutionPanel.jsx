@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Terminal, CheckCircle2, AlertTriangle, Clock, ShieldX, Loader2, Zap, Timer } from 'lucide-react';
+import { Play, Terminal, CheckCircle2, AlertTriangle, Clock, ShieldX, Loader2, Zap, Timer, Download } from 'lucide-react';
 
 export default function ExecutionPanel({ onExecute, isRunning, executionResult, inputData, setInputData }) {
   const [activeTab, setActiveTab] = useState('output'); // 'output' | 'stdout' | 'stderr'
@@ -14,6 +14,23 @@ export default function ExecutionPanel({ onExecute, isRunning, executionResult, 
       }
     }
   }, [executionResult]);
+
+  const handleDownloadReport = () => {
+    if (!executionResult) return;
+    const reportData = {
+      timestamp: new Date().toISOString(),
+      execution: executionResult,
+      input: inputData
+    };
+    const jsonStr = JSON.stringify(reportData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `wasmbox_execution_${executionResult.id || Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const loadPresetInput = (type) => {
     switch (type) {
@@ -74,27 +91,38 @@ export default function ExecutionPanel({ onExecute, isRunning, executionResult, 
           <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wider">Execution Console</h2>
         </div>
 
-        <button
-          onClick={onExecute}
-          disabled={isRunning}
-          className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-white transition-all shadow-lg ${
-            isRunning
-              ? 'bg-purple-900/50 cursor-not-allowed opacity-75'
-              : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20 active:scale-95'
-          }`}
-        >
-          {isRunning ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin text-white" />
-              <span>Running WASM Sandbox...</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-4 h-4 fill-current" />
-              <span>Run Code (Wasmtime)</span>
-            </>
+        <div className="flex items-center gap-2">
+          {executionResult && (
+            <button
+              onClick={handleDownloadReport}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 transition-all"
+            >
+              <Download className="w-3.5 h-3.5 text-purple-400" /> Export JSON
+            </button>
           )}
-        </button>
+
+          <button
+            onClick={onExecute}
+            disabled={isRunning}
+            className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-white transition-all shadow-lg ${
+              isRunning
+                ? 'bg-purple-900/50 cursor-not-allowed opacity-75'
+                : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20 active:scale-95'
+            }`}
+          >
+            {isRunning ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>Running WASM Sandbox...</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 fill-current" />
+                <span>Run Code (Wasmtime)</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Input Presets & Input Textarea */}

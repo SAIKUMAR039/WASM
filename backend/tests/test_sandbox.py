@@ -2,6 +2,7 @@ import pytest
 from app.pipeline.validator import validate_python_code
 from app.pipeline.compiler import PythonWasmCompiler
 from app.pipeline.schema_validator import validate_json_payload
+from app.pipeline.rate_limiter import RateLimiter
 from app.sandbox.wasmtime_runner import WasmSandboxRunner
 
 def test_ast_validator_safe_code():
@@ -83,3 +84,17 @@ def test_json_schema_validator():
     ok2, err2 = validate_json_payload(invalid_payload, schema)
     assert ok2 is False
     assert "Missing required payload keys" in err2
+
+def test_tenant_rate_limiter():
+    limiter = RateLimiter(max_requests=2, window_seconds=60)
+    ok1, rem1 = limiter.check_rate_limit("tenant_test")
+    assert ok1 is True
+    assert rem1 == 1
+
+    ok2, rem2 = limiter.check_rate_limit("tenant_test")
+    assert ok2 is True
+    assert rem2 == 0
+
+    ok3, rem3 = limiter.check_rate_limit("tenant_test")
+    assert ok3 is False
+    assert rem3 == 0
