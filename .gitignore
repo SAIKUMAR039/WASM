@@ -40,6 +40,7 @@ dist-ssr/
 # WebAssembly & Wasmtime build cache
 *.wasm
 .wasmtime/
+.wasmbox_cache/
 target/
 
 # IDE / OS

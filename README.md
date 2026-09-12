@@ -12,9 +12,13 @@ The platform isolates plugins from unauthorized host access (server filesystem, 
 
 - **Python → WASM Pipeline**: Preprocesses, validates, and packages Python plugins for sandboxed WebAssembly execution.
 - **Wasmtime Sandbox**: Enforces strict WASI capabilities, memory limits (128 MB default), execution timeouts (5s default), and system call restrictions.
-- **FastAPI Backend**: Provides REST APIs for plugin CRUD operations, code execution, sandbox policy management, and telemetry log retrieval.
-- **React + Monaco Developer Portal**: Web-based IDE with live execution controls, performance metrics visualizers, security policy toggles, and audit logs.
+- **Real-Time WebSockets Streaming (`/ws/execute`)**: Live bidirectional stdout/stderr streaming from the sandbox runner to the web terminal.
+- **Interactive Analytics & Trend Charts**: Real-time Recharts visualizations in the Dashboard tracking latency percentiles, memory efficiency, and execution trends.
+- **Enhanced Monaco Editor**: In-browser Python IDE featuring smart WasmBox autocompletions, pre-built snippets, and a side-by-side version diff viewer.
+- **FastAPI Backend**: Provides REST APIs and WebSockets for plugin CRUD operations, code execution, sandbox policy management, and telemetry.
+- **React Developer Portal**: Full dashboard with execution console, performance metrics, security toggles, and audit logging.
 - **Multi-Tenancy Support**: Isolates data, plugin state, and execution contexts across tenants.
+
 
 ---
 

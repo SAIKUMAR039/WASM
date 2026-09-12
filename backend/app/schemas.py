@@ -68,3 +68,34 @@ class SystemLogSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+class StreamExecutionRequest(BaseModel):
+    plugin_id: Optional[str] = None
+    code: Optional[str] = None
+    input_data: Optional[Any] = "HELLO WORLD"
+    tenant_id: str = "tenant_default"
+
+class StreamChunkEvent(BaseModel):
+    type: str  # "stdout", "stderr", "status", "result", "error"
+    data: Optional[str] = None
+    status: Optional[str] = None
+    id: Optional[str] = None
+
+class ExecutionTrendPoint(BaseModel):
+    id: str
+    timestamp: str
+    execution_time_sec: float
+    memory_used_mb: float
+    status: str
+    plugin_id: Optional[str] = None
+
+class TrendSummaryResponse(BaseModel):
+    tenant_id: str
+    count: int
+    p50_latency_sec: float
+    p95_latency_sec: float
+    p99_latency_sec: float
+    avg_memory_mb: float
+    trends: list[ExecutionTrendPoint] = []
+
+

@@ -1,11 +1,75 @@
-import React from 'react';
-import { Timer, HardDrive, CheckCircle, Cpu, Zap, ShieldCheck, Layers } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from 'recharts';
+import {
+  Timer,
+  HardDrive,
+  CheckCircle,
+  Zap,
+  Layers,
+  Activity,
+} from 'lucide-react';
 
-export default function MetricsDashboard({ metrics, latestExecution }) {
-  const execTime = latestExecution ? latestExecution.execution_time_sec : (metrics?.avg_execution_time_sec || 0.042);
-  const memoryUsed = latestExecution ? latestExecution.memory_used_mb : (metrics?.avg_memory_used_mb || 38.0);
-  const successRate = metrics?.success_rate_pct || 100.0;
-  const totalRuns = metrics?.total_executions || 24;
+export default function MetricsDashboard({
+  metrics,
+  latestExecution,
+  executionHistory = [],
+}) {
+  const [timeWindow, setTimeWindow] = useState('20');
+  const [chartView, setChartView] = useState('all');
+
+  const execTime =
+    latestExecution?.execution_time_sec ??
+    metrics?.avg_execution_time_sec ??
+    0.042;
+
+  const memoryUsed =
+    latestExecution?.memory_used_mb ??
+    metrics?.avg_memory_used_mb ??
+    38.0;
+
+  const successRate = metrics?.success_rate_pct ?? 100.0;
+  const totalRuns = metrics?.total_executions ?? 0;
+
+  // Prepare execution history for charts
+  const chartData = useMemo(() => {
+    let items = [...executionHistory].filter((item) => item?.executed_at);
+
+    if (items.length === 0 && latestExecution?.executed_at) {
+      items = [latestExecution];
+    }
+
+    items.sort(
+      (a, b) => new Date(a.executed_at) - new Date(b.executed_at)
+    );
+
+    const limit = timeWindow === 'all' ? items.length : parseInt(timeWindow, 10);
+    const sliced = items.slice(-limit);
+
+    return sliced.map((item, index) => ({
+      index: index + 1,
+      time: item.executed_at
+        ? new Date(item.executed_at).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          })
+        : `Run #${index + 1}`,
+      executionTime: Number(item.execution_time_sec ?? 0),
+      memory: Number(item.memory_used_mb ?? 0),
+      status: item.status || 'UNKNOWN',
+    }));
+  }, [executionHistory, latestExecution, timeWindow]);
 
   return (
     <div className="space-y-6">
@@ -14,62 +78,261 @@ export default function MetricsDashboard({ metrics, latestExecution }) {
         {/* Execution Time */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Execution Time</span>
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Execution Time
+            </span>
             <div className="p-2 bg-purple-950/60 border border-purple-500/20 text-purple-400 rounded-xl">
               <Timer className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold text-white font-mono">{execTime}s</span>
-            <span className="text-[11px] text-emerald-400 font-medium font-mono">160x faster</span>
+            <span className="text-2xl font-extrabold text-white font-mono">
+              {Number(execTime).toFixed(4)}s
+            </span>
+            <span className="text-[11px] text-emerald-400 font-medium font-mono">
+              160x faster
+            </span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Wasmtime JIT runtime compilation</p>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Wasmtime JIT runtime compilation
+          </p>
         </div>
 
         {/* Memory Footprint */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Memory Usage</span>
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Memory Usage
+            </span>
             <div className="p-2 bg-blue-950/60 border border-blue-500/20 text-blue-400 rounded-xl">
               <HardDrive className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold text-white font-mono">{memoryUsed} MB</span>
-            <span className="text-[11px] text-blue-400 font-medium font-mono">Limit: 128 MB</span>
+            <span className="text-2xl font-extrabold text-white font-mono">
+              {Number(memoryUsed).toFixed(2)} MB
+            </span>
+            <span className="text-[11px] text-blue-400 font-medium font-mono">
+              Limit: 128 MB
+            </span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Lightweight linear memory sandbox</p>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Lightweight linear memory sandbox
+          </p>
         </div>
 
         {/* Success Rate */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Success Rate</span>
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Success Rate
+            </span>
             <div className="p-2 bg-emerald-950/60 border border-emerald-500/20 text-emerald-400 rounded-xl">
               <CheckCircle className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold text-white font-mono">{successRate}%</span>
-            <span className="text-[11px] text-emerald-400 font-medium">Optimal</span>
+            <span className="text-2xl font-extrabold text-white font-mono">
+              {Number(successRate).toFixed(2)}%
+            </span>
+            <span className="text-[11px] text-emerald-400 font-medium">
+              Optimal
+            </span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Zero unhandled sandbox crashes</p>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Sandbox execution success rate
+          </p>
         </div>
 
         {/* Total Executions */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Sandbox Runs</span>
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Total Sandbox Runs
+            </span>
             <div className="p-2 bg-indigo-950/60 border border-indigo-500/20 text-indigo-400 rounded-xl">
               <Zap className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold text-white font-mono">{totalRuns}</span>
-            <span className="text-[11px] text-indigo-400 font-medium font-mono">+12 today</span>
+            <span className="text-2xl font-extrabold text-white font-mono">
+              {totalRuns}
+            </span>
+            <span className="text-[11px] text-indigo-400 font-medium font-mono">
+              Live
+            </span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Multi-tenant execution count</p>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Multi-tenant execution count
+          </p>
         </div>
+      </div>
+
+      {/* Analytics Charts */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800/80 gap-3 mb-6">
+          <div>
+            <div className="flex items-center gap-3">
+              <Activity className="w-5 h-5 text-purple-400" />
+              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">
+                Live Execution Telemetry
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Interactive latency and memory trends from recent sandbox runs.
+            </p>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-2 text-xs">
+            {/* View Selector */}
+            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+              {['all', 'latency', 'memory'].map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setChartView(v)}
+                  className={`px-2.5 py-1 rounded-lg font-medium capitalize transition-all ${
+                    chartView === v
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+
+            {/* Time Window Selector */}
+            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+              {[
+                { label: '10', value: '10' },
+                { label: '20', value: '20' },
+                { label: 'All', value: 'all' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setTimeWindow(opt.value)}
+                  className={`px-2 py-1 rounded-lg font-mono text-[11px] transition-all ${
+                    timeWindow === opt.value
+                      ? 'bg-slate-800 text-slate-100 font-semibold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {chartData.length === 0 ? (
+          <div className="h-[280px] flex items-center justify-center border border-dashed border-slate-800 rounded-xl">
+            <div className="text-center">
+              <Activity className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+              <p className="text-sm text-slate-400">No execution telemetry yet</p>
+              <p className="text-xs text-slate-600 mt-1">Run a plugin to populate the charts.</p>
+            </div>
+          </div>
+        ) : (
+          <div className={`grid gap-6 ${chartView === 'all' ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
+            {/* Execution Latency Chart */}
+            {(chartView === 'all' || chartView === 'latency') && (
+            <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-4">
+              <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-4">
+                Execution Latency
+              </h4>
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis
+                    dataKey="time"
+                    tick={{ fill: '#64748b', fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: '#64748b', fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                    unit="s"
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#0f172a',
+                      border: '1px solid #334155',
+                      borderRadius: '8px',
+                      color: '#e2e8f0',
+                    }}
+                    labelStyle={{ color: '#94a3b8' }}
+                    formatter={(value) => [
+                      `${Number(value).toFixed(4)} s`,
+                      'Execution Time',
+                    ]}
+                  />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="executionTime"
+                    name="Execution Time"
+                    stroke="#a78bfa"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            )}
+
+            {/* Memory Usage Chart */}
+            {(chartView === 'all' || chartView === 'memory') && (
+            <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-4">
+              <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-4">
+                Memory Usage
+              </h4>
+              <ResponsiveContainer width="100%" height={280}>
+                <AreaChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis
+                    dataKey="time"
+                    tick={{ fill: '#64748b', fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: '#64748b', fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                    unit=" MB"
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#0f172a',
+                      border: '1px solid #334155',
+                      borderRadius: '8px',
+                      color: '#e2e8f0',
+                    }}
+                    labelStyle={{ color: '#94a3b8' }}
+                    formatter={(value) => [
+                      `${Number(value).toFixed(2)} MB`,
+                      'Memory Usage',
+                    ]}
+                  />
+                  <Legend />
+                  <Area
+                    type="monotone"
+                    dataKey="memory"
+                    name="Memory Usage"
+                    stroke="#60a5fa"
+                    fill="#1e3a8a"
+                    fillOpacity={0.25}
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Docker vs WASM Comparison Card (Based on Storyboard) */}

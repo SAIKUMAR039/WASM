@@ -1,7 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.database import connect_to_mongo, close_mongo_connection
+from app.database import connect_to_mongo, close_mongo_connection, get_db
 from app.routers import plugins, execution, metrics, settings as settings_router
 
 app = FastAPI(
@@ -34,6 +34,13 @@ app.include_router(execution.router, prefix=settings.API_V1_STR)
 app.include_router(metrics.router, prefix=settings.API_V1_STR)
 app.include_router(settings_router.router, prefix=settings.API_V1_STR)
 
+# Root WebSocket streaming endpoint for real-time stdout
+@app.websocket("/ws/execute")
+async def root_websocket_execute(websocket: WebSocket):
+    from app.routers.execution import handle_websocket_execution
+    db = get_db()
+    await handle_websocket_execution(websocket, db)
+
 @app.get("/")
 def root():
     return {
@@ -47,3 +54,4 @@ def root():
 @app.get(f"{settings.API_V1_STR}/health")
 def health_check():
     return {"status": "healthy", "sandbox": "wasmtime", "database": "mongodb"}
+
