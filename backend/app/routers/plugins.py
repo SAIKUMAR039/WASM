@@ -11,16 +11,40 @@ router = APIRouter(prefix="/plugins", tags=["Plugins"])
 _memory_plugins = {}
 
 @router.get("", response_model=List[PluginResponse])
-def list_plugins(tenant_id: str = "tenant_default", db=Depends(get_db)):
-    """Retrieve all active Python plugins for a specific tenant from MongoDB."""
+def list_plugins(
+    tenant_id: str = "tenant_default",
+    category: Optional[str] = None,
+    tag: Optional[str] = None,
+    search: Optional[str] = None,
+    db=Depends(get_db)
+):
+    """Retrieve all active Python plugins for a specific tenant from MongoDB with optional filtering."""
     if db is not None:
-        docs = list(db["plugins"].find({"tenant_id": tenant_id, "is_active": True}))
+        query = {"tenant_id": tenant_id, "is_active": True}
+        if category:
+            query["category"] = category
+        if tag:
+            query["tags"] = tag
+        if search:
+            query["$or"] = [
+                {"name": {"$regex": search, "$options": "i"}},
+                {"description": {"$regex": search, "$options": "i"}}
+            ]
+        docs = list(db["plugins"].find(query))
         for d in docs:
             d["id"] = d.get("_id", d.get("id"))
         return docs
     
     # Fallback memory store
-    return [p for p in _memory_plugins.values() if p["tenant_id"] == tenant_id and p["is_active"]]
+    res = [p for p in _memory_plugins.values() if p["tenant_id"] == tenant_id and p.get("is_active", True)]
+    if category:
+        res = [p for p in res if p.get("category") == category]
+    if tag:
+        res = [p for p in res if tag in p.get("tags", [])]
+    if search:
+        s = search.lower()
+        res = [p for p in res if s in p.get("name", "").lower() or s in p.get("description", "").lower()]
+    return res
 
 @router.post("", response_model=PluginResponse, status_code=status.HTTP_201_CREATED)
 def create_plugin(plugin_in: PluginCreate, db=Depends(get_db)):
@@ -35,6 +59,8 @@ def create_plugin(plugin_in: PluginCreate, db=Depends(get_db)):
         "code": plugin_in.code,
         "language": plugin_in.language,
         "version": plugin_in.version,
+        "category": plugin_in.category or "general",
+        "tags": plugin_in.tags or [],
         "tenant_id": plugin_in.tenant_id,
         "is_active": True,
         "created_at": now,

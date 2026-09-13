@@ -22,7 +22,13 @@ async function request(endpoint, options = {}) {
 
 export const api = {
   // Plugin Endpoints
-  getPlugins: (tenantId = 'tenant_default') => request(`/plugins?tenant_id=${tenantId}`),
+  getPlugins: (tenantId = 'tenant_default', { category, tag, search } = {}) => {
+    const params = new URLSearchParams({ tenant_id: tenantId });
+    if (category) params.append('category', category);
+    if (tag) params.append('tag', tag);
+    if (search) params.append('search', search);
+    return request(`/plugins?${params.toString()}`);
+  },
   createPlugin: (data) => request('/plugins', { method: 'POST', body: JSON.stringify(data) }),
   updatePlugin: (id, data) => request(`/plugins/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePlugin: (id) => request(`/plugins/${id}`, { method: 'DELETE' }),

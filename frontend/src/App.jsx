@@ -97,11 +97,13 @@ export default function App() {
     } catch (e) {}
   };
 
-  const handleCreatePlugin = async ({ name, description }) => {
+  const handleCreatePlugin = async ({ name, description, category, tags }) => {
     const newPluginObj = {
       name,
       description,
       code,
+      category: category || 'general',
+      tags: tags || [],
       tenant_id: tenantId,
       language: 'python',
       version: '1.0.0'

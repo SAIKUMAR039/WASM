@@ -13,6 +13,8 @@ class PluginDocument(BaseModel):
     code: str
     language: str = "python"
     version: str = "1.0.0"
+    category: Optional[str] = "general"
+    tags: list[str] = []
     tenant_id: str = "tenant_default"
     is_active: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)

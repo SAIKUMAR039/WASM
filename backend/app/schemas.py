@@ -8,6 +8,8 @@ class PluginBase(BaseModel):
     code: str = Field(..., example="def process(data):\n    return {'result': data.upper()}")
     language: str = "python"
     version: str = "1.0.0"
+    category: Optional[str] = "general"
+    tags: list[str] = []
     tenant_id: str = "tenant_default"
 
 class PluginCreate(PluginBase):
@@ -18,6 +20,8 @@ class PluginUpdate(BaseModel):
     description: Optional[str] = None
     code: Optional[str] = None
     version: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[list[str]] = None
 
 class PluginResponse(PluginBase):
     id: str
