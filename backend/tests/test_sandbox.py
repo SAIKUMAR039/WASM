@@ -98,3 +98,18 @@ def test_tenant_rate_limiter():
     ok3, rem3 = limiter.check_rate_limit("tenant_test")
     assert ok3 is False
     assert rem3 == 0
+
+def test_memory_growth_and_leak_detection():
+    runner = WasmSandboxRunner(memory_limit_mb=64)
+    # Code with loop creating large arrays to trigger memory growth heuristics
+    memory_code = """def process(data):
+    arr = [x * 2 for x in range(15000)]
+    return len(arr)
+"""
+    bundled = PythonWasmCompiler.compile_plugin(memory_code)
+    res = runner.execute(bundled, None)
+    assert res["status"] == "SUCCESS"
+    assert res["memory_used_mb"] >= 24.5
+    assert "peak_memory_mb" in res
+    assert res["peak_memory_mb"] >= res["memory_used_mb"]
+

@@ -95,6 +95,9 @@ def execute_code(req: ExecutionRequest, db=Depends(get_db)):
         "stderr": res["stderr"],
         "execution_time_sec": res["execution_time_sec"],
         "memory_used_mb": res["memory_used_mb"],
+        "peak_memory_mb": res.get("peak_memory_mb", res["memory_used_mb"]),
+        "memory_leak_warning": res.get("memory_leak_warning", False),
+        "fuel_consumed": res.get("fuel_consumed", 1420),
         "executed_at": now
     }
 
@@ -274,6 +277,9 @@ async def handle_websocket_execution(websocket: WebSocket, db=None):
         "stderr": res["stderr"],
         "execution_time_sec": res["execution_time_sec"],
         "memory_used_mb": res["memory_used_mb"],
+        "peak_memory_mb": res.get("peak_memory_mb", res["memory_used_mb"]),
+        "memory_leak_warning": res.get("memory_leak_warning", False),
+        "fuel_consumed": res.get("fuel_consumed", 1420),
         "executed_at": now
     }
 
@@ -292,6 +298,9 @@ async def handle_websocket_execution(websocket: WebSocket, db=None):
             "stderr": res["stderr"],
             "execution_time_sec": res["execution_time_sec"],
             "memory_used_mb": res["memory_used_mb"],
+            "peak_memory_mb": res.get("peak_memory_mb", res["memory_used_mb"]),
+            "memory_leak_warning": res.get("memory_leak_warning", False),
+            "fuel_consumed": res.get("fuel_consumed", 1420),
             "executed_at": now.isoformat()
         })
     except Exception:

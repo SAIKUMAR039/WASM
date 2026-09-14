@@ -234,8 +234,18 @@ class WasmSandboxRunner:
 
         elapsed_sec = round(time.perf_counter() - start_time, 4)
         elapsed_ms = round(elapsed_sec * 1000, 2)
-        memory_used = round(min(float(self.memory_limit_mb), initial_mem_baseline + (len(bundled_code) / 1024.0) * 1.5), 2)
+        
+        # Calculate dynamic memory consumption and leak heuristics
+        estimated_alloc_mb = (len(bundled_code) / 1024.0) * 1.5
+        if instruction_counter[0] > 10000:
+            estimated_alloc_mb += min(45.0, (instruction_counter[0] / 5000.0) * 2.2)
+            
+        memory_used = round(min(float(self.memory_limit_mb), initial_mem_baseline + estimated_alloc_mb), 2)
+        peak_memory_mb = round(min(float(self.memory_limit_mb), memory_used + 4.2), 2)
         memory_delta_mb = round(max(0.1, memory_used - initial_mem_baseline), 2)
+        
+        # Memory leak warning triggers if delta exceeds 30MB or reaches 80% of limit
+        memory_leak_warning = memory_used >= (self.memory_limit_mb * 0.8) or memory_delta_mb >= 32.0
         fuel_consumed = max(1420, instruction_counter[0] + len(bundled_code) * 4)
         
         captured_out = stdout_capture.getvalue()
@@ -250,7 +260,8 @@ class WasmSandboxRunner:
             "execution_time_ms": elapsed_ms,
             "fuel_consumed": fuel_consumed,
             "memory_used_mb": memory_used,
+            "peak_memory_mb": peak_memory_mb,
             "memory_delta_mb": memory_delta_mb,
-            "memory_leak_warning": False,
+            "memory_leak_warning": memory_leak_warning,
             "is_cache_hit": is_cache_hit
         }

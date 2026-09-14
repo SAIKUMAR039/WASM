@@ -47,6 +47,9 @@ class ExecutionResponse(BaseModel):
     stderr: Optional[str] = ""
     execution_time_sec: float
     memory_used_mb: float
+    peak_memory_mb: Optional[float] = None
+    memory_leak_warning: Optional[bool] = False
+    fuel_consumed: Optional[int] = None
     executed_at: datetime
 
     class Config:

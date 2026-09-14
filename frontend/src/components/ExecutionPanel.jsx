@@ -260,6 +260,17 @@ export default function ExecutionPanel({
                   <Zap className="w-3 h-3 text-amber-400" />
                   {(executionResult.fuel_consumed || 1420).toLocaleString()} fuel
                 </span>
+                {executionResult.peak_memory_mb && (
+                  <span className="flex items-center gap-1 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 text-blue-300">
+                    Peak: {executionResult.peak_memory_mb}MB
+                  </span>
+                )}
+                {executionResult.memory_leak_warning && (
+                  <span className="flex items-center gap-1 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-500/40 text-amber-300 animate-pulse font-semibold">
+                    <AlertTriangle className="w-3 h-3 text-amber-400" />
+                    Mem Warning
+                  </span>
+                )}
               </div>
             )}
             {executionResult && getStatusBadge(executionResult.status)}
