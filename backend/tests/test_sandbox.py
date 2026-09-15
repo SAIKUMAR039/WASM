@@ -113,3 +113,20 @@ def test_memory_growth_and_leak_detection():
     assert "peak_memory_mb" in res
     assert res["peak_memory_mb"] >= res["memory_used_mb"]
 
+def test_sandboxed_environment_variables():
+    runner = WasmSandboxRunner()
+    code = """def process(data):
+    api_key = wasmbox_getenv("API_KEY", "default-key")
+    region = wasmbox_getenv("REGION", "us-east-1")
+    return {"api_key": api_key, "region": region}
+"""
+    bundled = PythonWasmCompiler.compile_plugin(
+        code,
+        env_vars={"API_KEY": "secret-token-xyz", "REGION": "eu-central-1", "PATH": "malicious"}
+    )
+    res = runner.execute(bundled, None)
+    assert res["status"] == "SUCCESS"
+    assert res["output_result"]["api_key"] == "secret-token-xyz"
+    assert res["output_result"]["region"] == "eu-central-1"
+
+

@@ -36,6 +36,7 @@ class ExecutionRequest(BaseModel):
     plugin_id: Optional[str] = None
     code: Optional[str] = None
     input_data: Optional[Any] = "HELLO WORLD"
+    env_vars: Optional[dict[str, str]] = None
     tenant_id: str = "tenant_default"
 
 class ExecutionResponse(BaseModel):
@@ -80,6 +81,7 @@ class StreamExecutionRequest(BaseModel):
     plugin_id: Optional[str] = None
     code: Optional[str] = None
     input_data: Optional[Any] = "HELLO WORLD"
+    env_vars: Optional[dict[str, str]] = None
     tenant_id: str = "tenant_default"
 
 class StreamChunkEvent(BaseModel):

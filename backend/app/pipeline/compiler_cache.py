@@ -34,25 +34,26 @@ class CompilerCache:
             self._cache.move_to_end(key)
             return self._cache[key]
 
-    def compile(self, code: str) -> str:
+    def compile(self, code: str, env_vars: Optional[dict] = None) -> str:
         """
         Get compiled code from cache.
         If it is not cached, compile it and store the result.
         """
-        cached = self.get(code)
+        if not env_vars:
+            cached = self.get(code)
+            if cached is not None:
+                return cached
 
-        if cached is not None:
-            return cached
+        compiled = PythonWasmCompiler.compile_plugin(code, env_vars=env_vars)
 
-        compiled = PythonWasmCompiler.compile_plugin(code)
+        if not env_vars:
+            with self._lock:
+                self._cache[key := self._make_key(code)] = compiled
+                self._cache.move_to_end(key)
 
-        with self._lock:
-            self._cache[key := self._make_key(code)] = compiled
-            self._cache.move_to_end(key)
-
-            # Remove oldest entry when cache is full
-            while len(self._cache) > self.max_size:
-                self._cache.popitem(last=False)
+                # Remove oldest entry when cache is full
+                while len(self._cache) > self.max_size:
+                    self._cache.popitem(last=False)
 
         return compiled
 

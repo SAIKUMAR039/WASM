@@ -76,7 +76,7 @@ def execute_code(req: ExecutionRequest, db=Depends(get_db)):
         return exec_doc
 
     # 2. Package into WASM Harness
-    bundled = compiler_cache.compile(code_to_run)
+    bundled = compiler_cache.compile(code_to_run, env_vars=req.env_vars)
 
     # 3. Execute in Wasmtime Sandbox Runner
     runner = WasmSandboxRunner(memory_limit_mb=mem_limit, timeout_sec=timeout_sec)
@@ -209,7 +209,8 @@ async def handle_websocket_execution(websocket: WebSocket, db=None):
     def stream_callback(stream_type: str, chunk: str):
         loop.call_soon_threadsafe(stream_queue.put_nowait, (stream_type, chunk))
 
-    bundled = compiler_cache.compile(code_to_run)
+    env_vars = data.get("env_vars")
+    bundled = compiler_cache.compile(code_to_run, env_vars=env_vars)
     runner = WasmSandboxRunner(memory_limit_mb=mem_limit, timeout_sec=timeout_sec)
 
     cancel_event = threading.Event()

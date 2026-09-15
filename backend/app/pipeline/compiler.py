@@ -53,6 +53,12 @@ import uuid
 {user_code}
 # --- USER PLUGIN CODE END ---
 
+_WASMSBOX_ENV = {env_json}
+
+def wasmbox_getenv(key: str, default=None):
+    """Retrieve an environment variable safely provided by the tenant sandbox."""
+    return _WASMSBOX_ENV.get(key, default)
+
 def _wasmbox_main(raw_input_json):
     data = None
     if raw_input_json:
@@ -100,13 +106,16 @@ if __name__ == "__main__":
         """Returns the active package manager instance."""
         return cls.package_manager
 
+    BLOCKED_ENV_KEYS = {"PATH", "PYTHONPATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "SHELL"}
+
     @classmethod
     def compile_plugin(
         cls,
         code: str,
         use_cache: bool = True,
         build_config: Optional[Dict[str, Any]] = None,
-        wheels: Optional[List[str]] = None
+        wheels: Optional[List[str]] = None,
+        env_vars: Optional[Dict[str, str]] = None
     ) -> CompiledWasmArtifact:
         """
         Compiles user python code into the Wasm execution harness and pre-compiled bytecode.
@@ -116,17 +125,33 @@ if __name__ == "__main__":
         if not code or not code.strip():
             raise WasmCompilationError("Code snippet cannot be empty")
 
-        cache_key = cls.cache.compute_cache_key(code, build_config=build_config, wheels=wheels)
+        # Sanitize env_vars
+        clean_env = {}
+        if env_vars:
+            clean_env = {
+                str(k): str(v)
+                for k, v in env_vars.items()
+                if str(k).upper() not in cls.BLOCKED_ENV_KEYS
+            }
 
-        # 1. Check compiler cache
-        if use_cache and cls.cache.enabled:
+        cache_build_config = (build_config or {}).copy()
+        if clean_env:
+            cache_build_config["env_keys"] = sorted(clean_env.keys())
+
+        cache_key = cls.cache.compute_cache_key(code, build_config=cache_build_config, wheels=wheels)
+
+        # 1. Check compiler cache (only if clean_env is empty so env values aren't baked into shared cache)
+        if use_cache and cls.cache.enabled and not clean_env:
             cached = cls.cache.get(cache_key)
             if cached is not None:
                 return cached
 
         # 2. Build harness source
         try:
-            harness_code = cls.ENTRY_HARNESS_TEMPLATE.format(user_code=code)
+            harness_code = cls.ENTRY_HARNESS_TEMPLATE.format(
+                user_code=code,
+                env_json=json.dumps(clean_env)
+            )
         except Exception as e:
             raise WasmCompilationError(f"Failed to generate execution harness: {e}")
 
