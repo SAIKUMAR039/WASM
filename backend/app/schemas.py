@@ -107,4 +107,25 @@ class TrendSummaryResponse(BaseModel):
     avg_memory_mb: float
     trends: list[ExecutionTrendPoint] = []
 
+class BenchmarkRequest(BaseModel):
+    plugin_id: Optional[str] = None
+    code: Optional[str] = None
+    input_data: Optional[Any] = "HELLO WORLD"
+    tenant_id: str = "tenant_default"
+    iterations: int = Field(default=10, ge=2, le=100)
+
+class BenchmarkResponse(BaseModel):
+    iterations: int
+    p50_latency_ms: float
+    p90_latency_ms: float
+    p99_latency_ms: float
+    avg_latency_ms: float
+    min_latency_ms: float
+    max_latency_ms: float
+    avg_memory_mb: float
+    total_fuel_consumed: int
+    success_rate_pct: float
+    raw_latencies_ms: list[float] = []
+
+
 

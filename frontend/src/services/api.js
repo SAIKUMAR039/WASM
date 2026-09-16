@@ -35,6 +35,7 @@ export const api = {
 
   // Execution Endpoints
   executeCode: (payload) => request('/execute', { method: 'POST', body: JSON.stringify(payload) }),
+  runBenchmark: (payload) => request('/execute/benchmark', { method: 'POST', body: JSON.stringify(payload) }),
 
   executeStream: (payload, { onChunk, onStatus, onResult, onError } = {}) => {
     return new Promise((resolve, reject) => {

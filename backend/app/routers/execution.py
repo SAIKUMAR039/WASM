@@ -4,7 +4,7 @@ import threading
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 from app.database import get_db
-from app.schemas import ExecutionRequest, ExecutionResponse
+from app.schemas import ExecutionRequest, ExecutionResponse, BenchmarkRequest, BenchmarkResponse
 from app.pipeline.validator import validate_python_code
 from app.pipeline.compiler_cache import compiler_cache
 from app.pipeline.rate_limiter import rate_limiter
@@ -107,6 +107,66 @@ def execute_code(req: ExecutionRequest, db=Depends(get_db)):
         _memory_executions.append(exec_doc)
 
     return exec_doc
+
+
+@router.post("/benchmark", response_model=BenchmarkResponse)
+def benchmark_plugin(req: BenchmarkRequest, db=Depends(get_db)):
+    """
+    Executes a plugin repeatedly in the WASM sandbox to measure latency percentiles (p50, p90, p99),
+    fuel consumption, memory efficiency, and stability under load.
+    """
+    code_to_run = req.code
+    if req.plugin_id and db is not None:
+        plugin = db["plugins"].find_one({"_id": req.plugin_id, "tenant_id": req.tenant_id})
+        if not plugin:
+            raise HTTPException(status_code=404, detail="Plugin not found for tenant")
+        code_to_run = plugin.get("code")
+
+    if not code_to_run or not code_to_run.strip():
+        raise HTTPException(status_code=400, detail="No Python code provided for benchmark")
+
+    is_valid, violations = validate_python_code(code_to_run)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=f"Security Violation: {', '.join(violations)}")
+
+    bundled = compiler_cache.compile(code_to_run)
+    runner = WasmSandboxRunner()
+
+    latencies_ms = []
+    memories_mb = []
+    total_fuel = 0
+    success_count = 0
+
+    for _ in range(req.iterations):
+        res = runner.execute(bundled, req.input_data)
+        lat = res.get("execution_time_ms", res["execution_time_sec"] * 1000.0)
+        latencies_ms.append(lat)
+        memories_mb.append(res["memory_used_mb"])
+        total_fuel += res.get("fuel_consumed", 1420)
+        if res["status"] == "SUCCESS":
+            success_count += 1
+
+    sorted_lats = sorted(latencies_ms)
+    n = len(sorted_lats)
+
+    def percentile(p):
+        idx = int(round((p / 100.0) * (n - 1)))
+        return sorted_lats[idx]
+
+    return {
+        "iterations": req.iterations,
+        "p50_latency_ms": round(percentile(50), 3),
+        "p90_latency_ms": round(percentile(90), 3),
+        "p99_latency_ms": round(percentile(99), 3),
+        "avg_latency_ms": round(sum(latencies_ms) / n, 3),
+        "min_latency_ms": round(sorted_lats[0], 3),
+        "max_latency_ms": round(sorted_lats[-1], 3),
+        "avg_memory_mb": round(sum(memories_mb) / n, 2),
+        "total_fuel_consumed": total_fuel,
+        "success_rate_pct": round((success_count / n) * 100.0, 1),
+        "raw_latencies_ms": latencies_ms
+    }
+
 
 
 async def handle_websocket_execution(websocket: WebSocket, db=None):

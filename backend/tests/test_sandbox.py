@@ -129,4 +129,19 @@ def test_sandboxed_environment_variables():
     assert res["output_result"]["api_key"] == "secret-token-xyz"
     assert res["output_result"]["region"] == "eu-central-1"
 
+def test_benchmark_calculation_metrics():
+    runner = WasmSandboxRunner()
+    code = "def process(data): return 42"
+    bundled = PythonWasmCompiler.compile_plugin(code)
+    
+    lats = []
+    for _ in range(5):
+        res = runner.execute(bundled, None)
+        assert res["status"] == "SUCCESS"
+        lats.append(res["execution_time_ms"])
+    
+    assert len(lats) == 5
+    assert all(l > 0 for l in lats)
+
+
 
