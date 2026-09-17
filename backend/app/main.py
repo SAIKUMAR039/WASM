@@ -55,3 +55,11 @@ def root():
 def health_check():
     return {"status": "healthy", "sandbox": "wasmtime", "database": "mongodb"}
 
+@app.get("/metrics")
+def root_prometheus_metrics():
+    """Direct root Prometheus exposition metric scraping endpoint."""
+    from app.routers.metrics import prometheus_metrics
+    db = get_db()
+    return prometheus_metrics(tenant_id="tenant_default", db=db)
+
+

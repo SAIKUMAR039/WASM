@@ -1,11 +1,33 @@
 import React, { useState } from 'react';
-import { ScrollText, CheckCircle2, AlertTriangle, Clock, ShieldX, ChevronRight, ChevronDown } from 'lucide-react';
+import { ScrollText, CheckCircle2, AlertTriangle, Clock, ShieldX, ChevronRight, ChevronDown, Download } from 'lucide-react';
 
 export default function ExecutionHistory({ executions = [] }) {
   const [expandedId, setExpandedId] = useState(null);
 
   const toggleExpand = (id) => {
     setExpandedId(expandedId === id ? null : id);
+  };
+
+  const handleDownloadCsv = () => {
+    if (executions.length === 0) return;
+    const headers = ['Execution ID', 'Tenant ID', 'Plugin ID', 'Status', 'Execution Time (s)', 'Memory Used (MB)', 'Timestamp'];
+    const rows = executions.map(e => [
+      e.id,
+      e.tenant_id || 'tenant_default',
+      e.plugin_id || '',
+      e.status,
+      e.execution_time_sec,
+      e.memory_used_mb,
+      e.executed_at
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `wasmbox_audit_logs_${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const getStatusBadge = (status) => {
@@ -46,7 +68,16 @@ export default function ExecutionHistory({ executions = [] }) {
           <ScrollText className="w-5 h-5 text-purple-400" />
           <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wider">Execution Audit Logs</h2>
         </div>
-        <span className="text-xs font-mono text-slate-400">Showing last {executions.length} runs</span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleDownloadCsv}
+            disabled={executions.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 transition-all border border-slate-700"
+          >
+            <Download className="w-3.5 h-3.5 text-purple-400" /> Export Audit CSV
+          </button>
+          <span className="text-xs font-mono text-slate-400">Showing last {executions.length} runs</span>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-800">
