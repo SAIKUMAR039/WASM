@@ -97,11 +97,12 @@ export default function App() {
     } catch (e) {}
   };
 
-  const handleCreatePlugin = async ({ name, description, category, tags }) => {
+  const handleCreatePlugin = async ({ name, description, category, tags, code: customCode }) => {
+    const pluginCode = customCode || code;
     const newPluginObj = {
       name,
       description,
-      code,
+      code: pluginCode,
       category: category || 'general',
       tags: tags || [],
       tenant_id: tenantId,
@@ -112,10 +113,12 @@ export default function App() {
       const created = await api.createPlugin(newPluginObj);
       setPlugins([created, ...plugins]);
       setSelectedPlugin(created);
+      setCode(pluginCode);
     } catch (e) {
       const mockPlugin = { id: `plugin-${Date.now()}`, ...newPluginObj };
       setPlugins([mockPlugin, ...plugins]);
       setSelectedPlugin(mockPlugin);
+      setCode(pluginCode);
     }
   };
 

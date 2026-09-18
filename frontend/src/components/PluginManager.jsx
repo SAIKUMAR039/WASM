@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Plus, Save, Trash2, FileCode, Check, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Save, Trash2, FileCode, Check, AlertCircle, Sparkles, BookOpen, X } from 'lucide-react';
+import { api } from '../services/api';
 
 export default function PluginManager({ plugins, selectedPlugin, onSelectPlugin, onSavePlugin, onCreatePlugin, onDeletePlugin }) {
   const [name, setName] = useState('');
@@ -9,6 +10,14 @@ export default function PluginManager({ plugins, selectedPlugin, onSelectPlugin,
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templates, setTemplates] = useState([]);
+
+  useEffect(() => {
+    api.getTemplates()
+      .then(res => { if (res) setTemplates(res); })
+      .catch(() => {});
+  }, []);
 
   const categories = ['all', 'general', 'data', 'security', 'utility', 'math'];
 
@@ -43,12 +52,20 @@ export default function PluginManager({ plugins, selectedPlugin, onSelectPlugin,
             {filteredPlugins.length}
           </span>
         </div>
-        <button
-          onClick={() => setIsCreating(!isCreating)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-xl transition-all shadow-md shadow-purple-600/20"
-        >
-          <Plus className="w-4 h-4" /> New Plugin
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowTemplates(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-300 bg-purple-950/60 hover:bg-purple-900/60 border border-purple-500/30 rounded-xl transition-all shadow-sm"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" /> Templates
+          </button>
+          <button
+            onClick={() => setIsCreating(!isCreating)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-xl transition-all shadow-md shadow-purple-600/20"
+          >
+            <Plus className="w-4 h-4" /> New Plugin
+          </button>
+        </div>
       </div>
 
       {/* Category Pills & Search */}
@@ -202,6 +219,65 @@ export default function PluginManager({ plugins, selectedPlugin, onSelectPlugin,
           })
         )}
       </div>
+
+      {/* Template Gallery Modal */}
+      {showTemplates && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-400" />
+                <h3 className="text-base font-bold text-slate-100">WasmBox Plugin Template Gallery</h3>
+              </div>
+              <button
+                onClick={() => setShowTemplates(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Pre-audited, WASM-optimized Python scaffolds for rapid edge execution. Click "Instantiate" to copy into your workspace.
+            </p>
+
+            <div className="space-y-3 overflow-y-auto flex-1 pr-1">
+              {templates.map(tpl => (
+                <div key={tpl.id} className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-200">{tpl.name}</span>
+                      <span className="text-[10px] bg-purple-950 border border-purple-800/40 text-purple-300 px-2 py-0.5 rounded font-mono uppercase">
+                        {tpl.category}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        onCreatePlugin({
+                          name: tpl.name,
+                          description: tpl.description,
+                          category: tpl.category,
+                          tags: tpl.tags,
+                          code: tpl.code
+                        });
+                        setShowTemplates(false);
+                      }}
+                      className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg shadow-sm transition-all"
+                    >
+                      Instantiate Plugin
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400">{tpl.description}</p>
+                  <pre className="text-[10px] bg-slate-900 border border-slate-800/60 p-2 rounded text-slate-400 font-mono line-clamp-3 overflow-hidden">
+                    {tpl.code}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

@@ -1,14 +1,20 @@
 import uuid
 from datetime import datetime
-from typing import List
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.database import get_db
 from app.schemas import PluginCreate, PluginUpdate, PluginResponse
+from app.pipeline.templates import STANDARD_TEMPLATES
 
 router = APIRouter(prefix="/plugins", tags=["Plugins"])
 
 # In-memory storage fallback if MongoDB is starting up
 _memory_plugins = {}
+
+@router.get("/templates")
+def list_plugin_templates():
+    """Retrieve curated pre-built plugin templates."""
+    return STANDARD_TEMPLATES
 
 @router.get("", response_model=List[PluginResponse])
 def list_plugins(

@@ -29,6 +29,7 @@ export const api = {
     if (search) params.append('search', search);
     return request(`/plugins?${params.toString()}`);
   },
+  getTemplates: () => request('/plugins/templates'),
   createPlugin: (data) => request('/plugins', { method: 'POST', body: JSON.stringify(data) }),
   updatePlugin: (id, data) => request(`/plugins/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePlugin: (id) => request(`/plugins/${id}`, { method: 'DELETE' }),
