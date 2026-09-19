@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Editor, { DiffEditor } from '@monaco-editor/react';
-import { Code, RotateCcw, Save, AlertTriangle, CheckCircle2, GitCompare, FileCode2, History } from 'lucide-react';
+import { Code, RotateCcw, Save, AlertTriangle, CheckCircle2, GitCompare, FileCode2, History, ShieldAlert } from 'lucide-react';
+import { api } from '../services/api';
 
 const DEFAULT_PYTHON_SNIPPET = `def process(data):
     """
@@ -23,6 +24,7 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
   const [editorMode, setEditorMode] = useState('editor'); // 'editor' | 'diff'
   const [savedSnapshot, setSavedSnapshot] = useState(code);
   const [selectedSnapshot, setSelectedSnapshot] = useState('template');
+  const [liveDiagnostics, setLiveDiagnostics] = useState([]);
 
   // Synchronize savedSnapshot when switching plugins
   useEffect(() => {
@@ -197,7 +199,30 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
     }
   };
 
-  // Update error markers in Monaco editor when errorDetails changes
+  // Live AST and security pre-validation on typing (debounced 400ms)
+  useEffect(() => {
+    if (!code || !code.trim()) {
+      setLiveDiagnostics([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.validateCode(code);
+        if (res && !res.is_valid && res.errors) {
+          setLiveDiagnostics(res.errors);
+        } else {
+          setLiveDiagnostics([]);
+        }
+      } catch (e) {
+        // Standby
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [code]);
+
+  // Update error and warning markers in Monaco editor
   useEffect(() => {
     if (!editorRef.current || !monacoRef.current) return;
     const editor = editorRef.current;
@@ -205,28 +230,44 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
     const model = editor.getModel();
     if (!model) return;
 
+    const markers = [];
+
+    // Runtime execution error marker
     if (errorDetails) {
       let lineNo = 1;
-      // Extract line number from traceback e.g. "line 5" or "Line 12"
       const match = errorDetails.match(/line (\d+)/i) || errorDetails.match(/Line (\d+)/i);
-      if (match) {
-        lineNo = parseInt(match[1], 10);
-      }
+      if (match) lineNo = parseInt(match[1], 10);
 
-      monaco.editor.setModelMarkers(model, 'python-error', [
-        {
+      markers.push({
+        startLineNumber: lineNo,
+        startColumn: 1,
+        endLineNumber: lineNo,
+        endColumn: 100,
+        message: errorDetails,
+        severity: monaco.MarkerSeverity.Error,
+      });
+    }
+
+    // Live AST validation markers
+    if (liveDiagnostics && liveDiagnostics.length > 0) {
+      liveDiagnostics.forEach((diag) => {
+        let lineNo = 1;
+        const match = diag.match(/line (\d+)/i) || diag.match(/Line (\d+)/i);
+        if (match) lineNo = parseInt(match[1], 10);
+
+        markers.push({
           startLineNumber: lineNo,
           startColumn: 1,
           endLineNumber: lineNo,
           endColumn: 100,
-          message: errorDetails,
-          severity: monaco.MarkerSeverity.Error,
-        },
-      ]);
-    } else {
-      monaco.editor.setModelMarkers(model, 'python-error', []);
+          message: `[Security AST Violation] ${diag}`,
+          severity: monaco.MarkerSeverity.Warning,
+        });
+      });
     }
-  }, [errorDetails, code]);
+
+    monaco.editor.setModelMarkers(model, 'python-diagnostics', markers);
+  }, [errorDetails, liveDiagnostics, code]);
 
   const handleReset = () => {
     setCode(DEFAULT_PYTHON_SNIPPET);
@@ -352,7 +393,20 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
             <span className="truncate font-semibold">{errorDetails}</span>
           </div>
           <span className="text-[11px] bg-rose-900/60 px-2 py-0.5 rounded text-rose-200 shrink-0 ml-2">
-            See Squiggle Error in Code
+            Runtime Error
+          </span>
+        </div>
+      )}
+
+      {/* Live AST Security Violation Alert */}
+      {!errorDetails && liveDiagnostics.length > 0 && (
+        <div className="bg-amber-950/80 border-b border-amber-800/60 px-4 py-2 flex items-center justify-between text-xs text-amber-300 font-mono animate-pulse">
+          <div className="flex items-center gap-2 truncate">
+            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="truncate font-semibold">{liveDiagnostics[0]}</span>
+          </div>
+          <span className="text-[11px] bg-amber-900/60 px-2 py-0.5 rounded text-amber-200 shrink-0 ml-2">
+            Static AST Rule Violation
           </span>
         </div>
       )}

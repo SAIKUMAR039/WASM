@@ -127,5 +127,15 @@ class BenchmarkResponse(BaseModel):
     success_rate_pct: float
     raw_latencies_ms: list[float] = []
 
+class CodeValidationRequest(BaseModel):
+    code: str
+    custom_allowed_modules: Optional[list[str]] = None
+
+class CodeValidationResponse(BaseModel):
+    is_valid: bool
+    errors: list[str] = []
+    line_numbers: list[int] = []
+
+
 
 

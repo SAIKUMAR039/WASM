@@ -1,10 +1,12 @@
+import re
 import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.database import get_db
-from app.schemas import PluginCreate, PluginUpdate, PluginResponse
+from app.schemas import PluginCreate, PluginUpdate, PluginResponse, CodeValidationRequest, CodeValidationResponse
 from app.pipeline.templates import STANDARD_TEMPLATES
+from app.pipeline.validator import validate_python_code
 
 router = APIRouter(prefix="/plugins", tags=["Plugins"])
 
@@ -15,6 +17,31 @@ _memory_plugins = {}
 def list_plugin_templates():
     """Retrieve curated pre-built plugin templates."""
     return STANDARD_TEMPLATES
+
+@router.post("/validate", response_model=CodeValidationResponse)
+def validate_plugin_code(req: CodeValidationRequest):
+    """
+    Validates Python code against AST sandbox security policies and syntax grammar.
+    Returns detected line numbers and diagnostic messages for inline editor highlighting.
+    """
+    is_valid, violations = validate_python_code(
+        req.code,
+        custom_allowed_modules=req.custom_allowed_modules
+    )
+
+    line_numbers = []
+    for v in violations:
+        match = re.search(r"line\s+(\d+)", v, re.IGNORECASE)
+        if match:
+            line_numbers.append(int(match.group(1)))
+        else:
+            line_numbers.append(1)
+
+    return {
+        "is_valid": is_valid,
+        "errors": violations,
+        "line_numbers": line_numbers
+    }
 
 @router.get("", response_model=List[PluginResponse])
 def list_plugins(
