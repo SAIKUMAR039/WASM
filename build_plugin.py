@@ -66,6 +66,19 @@ def parse_args(args=None):
         help="Purge all cached .wasm artifacts from the cache directory and exit"
     )
     parser.add_argument(
+        "--prune",
+        type=float,
+        nargs="?",
+        const=250.0,
+        metavar="MAX_MB",
+        help="Prune cached artifacts exceeding MAX_MB (default: 250 MB) or older than 14 days"
+    )
+    parser.add_argument(
+        "--cache-stats",
+        action="store_true",
+        help="Display cache metrics, storage footprint, and hit ratio"
+    )
+    parser.add_argument(
         "--no-validate",
         action="store_true",
         help="Skip AST security validation against disallowed modules"
@@ -153,6 +166,26 @@ def main(args=None) -> int:
     if parsed.clean_cache:
         count = cache.clear()
         print(f"[CACHE] Purged {count} cached .wasm artifact(s) from '{cache.cache_dir}'.")
+        return 0
+
+    # Handle --prune
+    if parsed.prune is not None:
+        res = cache.prune(max_size_mb=parsed.prune)
+        print(f"[CACHE] Prune completed for '{cache.cache_dir}':")
+        print(f"  Pruned Artifacts: {res['pruned_count']}")
+        print(f"  Freed Space:      {res['freed_mb']} MB ({res['freed_bytes']:,} bytes)")
+        return 0
+
+    # Handle --cache-stats
+    if parsed.cache_stats:
+        stats = cache.get_cache_stats()
+        print(f"=== WasmBox Compiler Cache Statistics ===")
+        print(f"  Cache Directory:  {cache.cache_dir.resolve()}")
+        print(f"  Cached Files:     {stats['cached_artifacts_count']}")
+        print(f"  Disk Footprint:   {stats['disk_footprint_mb']} MB ({stats['disk_footprint_bytes']:,} bytes)")
+        print(f"  Hit Ratio:        {stats['hit_ratio_pct']}%")
+        print(f"  Hits:             {stats['hits']}")
+        print(f"  Misses:           {stats['misses']}")
         return 0
 
     # Handle --list-wheels

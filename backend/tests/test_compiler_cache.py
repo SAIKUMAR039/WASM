@@ -403,3 +403,25 @@ def test_cli_security_validation_failure(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "Plugin failed security validation" in captured.err
     assert "Forbidden module import: 'os'" in captured.err
+
+
+def test_cache_prune_and_stats(tmp_path):
+    """Test LRU cache eviction and stats calculation."""
+    cache_dir = tmp_path / "prune_cache"
+    cache = WasmCompilerCache(cache_dir=str(cache_dir), enabled=True)
+
+    # Put 3 artifacts
+    art1 = PythonWasmCompiler.compile_plugin("def process(data): return 1", use_cache=False)
+    art2 = PythonWasmCompiler.compile_plugin("def process(data): return 2", use_cache=False)
+    cache.put("k1", art1)
+    cache.put("k2", art2)
+
+    stats = cache.get_cache_stats()
+    assert stats["cached_artifacts_count"] == 2
+    assert stats["disk_footprint_bytes"] > 0
+
+    # Prune with 0.0001 MB limit to force LRU eviction
+    prune_res = cache.prune(max_size_mb=0.0001)
+    assert prune_res["pruned_count"] >= 1
+    assert prune_res["freed_bytes"] > 0
+

@@ -4,6 +4,7 @@ import json
 import marshal
 import os
 import sys
+import time
 import tempfile
 import types
 from datetime import datetime
@@ -337,6 +338,80 @@ class WasmCompilerCache:
             except OSError:
                 pass
         return count
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Calculates total cached files, disk footprint, and hit ratio."""
+        files = list(self.cache_dir.glob("*.wasm")) if self.cache_dir.exists() else []
+        total_bytes = sum(f.stat().st_size for f in files)
+        total_lookups = self.stats["hits"] + self.stats["misses"]
+        hit_ratio = round((self.stats["hits"] / total_lookups * 100.0) if total_lookups > 0 else 0.0, 1)
+
+        return {
+            "cached_artifacts_count": len(files),
+            "disk_footprint_bytes": total_bytes,
+            "disk_footprint_mb": round(total_bytes / (1024 * 1024), 2),
+            "hit_ratio_pct": hit_ratio,
+            **self.stats
+        }
+
+    def prune(self, max_size_mb: float = 250.0, max_age_days: int = 14) -> Dict[str, Any]:
+        """
+        Prunes cached .wasm artifacts using an LRU policy:
+        1. Deletes files older than max_age_days.
+        2. If total size exceeds max_size_mb, removes oldest accessed artifacts first.
+        """
+        if not self.cache_dir.exists():
+            return {"pruned_count": 0, "freed_bytes": 0}
+
+        now = time.time()
+        max_age_sec = max_age_days * 86400
+        files_info = []
+
+        for p in self.cache_dir.glob("*.wasm"):
+            try:
+                st = p.stat()
+                files_info.append({"path": p, "size": st.st_size, "mtime": st.st_mtime})
+            except OSError:
+                pass
+
+        pruned_count = 0
+        freed_bytes = 0
+
+        # Step 1: Evict files older than max_age_days
+        remaining = []
+        for info in files_info:
+            if (now - info["mtime"]) > max_age_sec:
+                try:
+                    info["path"].unlink()
+                    pruned_count += 1
+                    freed_bytes += info["size"]
+                except OSError:
+                    remaining.append(info)
+            else:
+                remaining.append(info)
+
+        # Step 2: Enforce size quota (sort oldest mtime first for LRU eviction)
+        remaining.sort(key=lambda x: x["mtime"])
+        max_bytes = max_size_mb * 1024 * 1024
+        current_total = sum(x["size"] for x in remaining)
+
+        for info in remaining:
+            if current_total <= max_bytes:
+                break
+            try:
+                info["path"].unlink()
+                pruned_count += 1
+                freed_bytes += info["size"]
+                current_total -= info["size"]
+            except OSError:
+                pass
+
+        return {
+            "pruned_count": pruned_count,
+            "freed_bytes": freed_bytes,
+            "freed_mb": round(freed_bytes / (1024 * 1024), 3)
+        }
+
 
 _default_cache: Optional[WasmCompilerCache] = None
 
