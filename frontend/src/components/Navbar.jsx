@@ -1,7 +1,16 @@
-import React from 'react';
-import { Box, Cpu, ShieldCheck, Activity } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Box, Cpu, ShieldCheck, Activity, Award } from 'lucide-react';
+import { api } from '../services/api';
 
 export default function Navbar({ tenantId, setTenantId }) {
+  const [quota, setQuota] = useState(null);
+
+  useEffect(() => {
+    api.getQuota(tenantId)
+      .then(res => { if (res) setQuota(res); })
+      .catch(() => {});
+  }, [tenantId]);
+
   return (
     <header className="h-16 border-b border-slate-800 bg-slate-900/80 backdrop-blur px-6 flex items-center justify-between sticky top-0 z-50">
       <div className="flex items-center gap-3">
@@ -17,6 +26,20 @@ export default function Navbar({ tenantId, setTenantId }) {
       </div>
 
       <div className="flex items-center gap-4">
+        {/* Tier & Quota Indicator */}
+        {quota && (
+          <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+            <Award className="w-3.5 h-3.5 text-purple-400" />
+            <span className="font-semibold text-purple-300 uppercase tracking-wider text-[11px]">
+              {quota.tier} Tier
+            </span>
+            <span className="text-slate-500">•</span>
+            <span className="text-slate-400 font-mono text-[11px]">
+              {quota.remaining_today} / {quota.max_daily_executions} daily runs
+            </span>
+          </div>
+        )}
+
         {/* Wasmtime Sandbox Status */}
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-400 text-xs font-medium">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>

@@ -155,7 +155,8 @@ export const api = {
   getExecutions: (tenantId = 'tenant_default') => request(`/metrics/executions?tenant_id=${tenantId}`),
   getMetricsTrends: (tenantId = 'tenant_default', limit = 30) => request(`/metrics/trends?tenant_id=${tenantId}&limit=${limit}`),
 
-  // Security Settings
+  // Security Settings & Quota
   getPolicy: (tenantId = 'tenant_default') => request(`/settings?tenant_id=${tenantId}`),
   updatePolicy: (policy) => request('/settings', { method: 'PUT', body: JSON.stringify(policy) }),
+  getQuota: (tenantId = 'tenant_default') => request(`/settings/quota?tenant_id=${tenantId}`),
 };

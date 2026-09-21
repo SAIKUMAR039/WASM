@@ -61,3 +61,17 @@ class SystemLogDocument(BaseModel):
 
     class Config:
         populate_by_name = True
+
+class TenantQuotaDocument(BaseModel):
+    id: str = Field(default_factory=generate_id, alias="_id")
+    tenant_id: str = "tenant_default"
+    tier: str = "pro"  # starter, pro, enterprise
+    max_daily_executions: int = 1000
+    max_memory_limit_mb: int = 256
+    executions_today: int = 0
+    last_reset_date: str = ""
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+

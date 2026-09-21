@@ -66,6 +66,17 @@ class SandboxPolicySchema(BaseModel):
     class Config:
         from_attributes = True
 
+class TenantQuotaSchema(BaseModel):
+    tenant_id: str = "tenant_default"
+    tier: str = "pro"
+    max_daily_executions: int = 1000
+    max_memory_limit_mb: int = 256
+    executions_today: int = 0
+    remaining_today: int = 1000
+
+    class Config:
+        from_attributes = True
+
 class SystemLogSchema(BaseModel):
     id: str
     tenant_id: str
