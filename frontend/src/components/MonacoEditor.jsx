@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Editor, { DiffEditor } from '@monaco-editor/react';
-import { Code, RotateCcw, Save, AlertTriangle, CheckCircle2, GitCompare, FileCode2, History, ShieldAlert } from 'lucide-react';
+import { Code, RotateCcw, Save, AlertTriangle, CheckCircle2, GitCompare, FileCode2, History, ShieldAlert, Keyboard } from 'lucide-react';
 import { api } from '../services/api';
 
 const DEFAULT_PYTHON_SNIPPET = `def process(data):
@@ -25,6 +25,7 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
   const [savedSnapshot, setSavedSnapshot] = useState(code);
   const [selectedSnapshot, setSelectedSnapshot] = useState('template');
   const [liveDiagnostics, setLiveDiagnostics] = useState([]);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Synchronize savedSnapshot when switching plugins
   useEffect(() => {
@@ -197,6 +198,16 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
       });
       window._wasmboxPythonCompletionsRegistered = true;
     }
+
+    // Register Keybindings
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      handleSaveWrapper();
+    });
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+      const runBtn = document.querySelector('[data-testid="run-wasm-btn"]');
+      if (runBtn) runBtn.click();
+    });
   };
 
   // Live AST and security pre-validation on typing (debounced 400ms)
@@ -372,10 +383,19 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
             <button
               onClick={handleSaveWrapper}
               className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-lg shadow-sm transition-all active:scale-95"
+              title="Save plugin changes (Ctrl+S)"
             >
               <Save className="w-3.5 h-3.5" /> Save Changes
             </button>
           )}
+          <button
+            onClick={() => setShowShortcuts(!showShortcuts)}
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700/60 rounded-lg transition-all"
+            title="Keyboard Shortcuts Cheatsheet"
+          >
+            <Keyboard className="w-3.5 h-3.5 text-purple-400" />
+            <span className="hidden sm:inline">Keys</span>
+          </button>
           <button
             onClick={handleReset}
             className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700/60 rounded-lg transition-all"
@@ -454,6 +474,36 @@ export default function MonacoEditor({ code, setCode, onSaveCode, errorDetails, 
           />
         )}
       </div>
+
+      {/* Shortcuts Modal */}
+      {showShortcuts && (
+        <div className="absolute top-12 right-4 z-40 bg-slate-900 border border-slate-700 rounded-xl p-4 shadow-2xl space-y-3 w-72 text-xs">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <span className="font-bold text-slate-200 flex items-center gap-1.5">
+              <Keyboard className="w-3.5 h-3.5 text-purple-400" /> Keyboard Shortcuts
+            </span>
+            <button onClick={() => setShowShortcuts(false)} className="text-slate-400 hover:text-white">✕</button>
+          </div>
+          <div className="space-y-2 font-mono">
+            <div className="flex justify-between items-center text-slate-300">
+              <span className="text-slate-400 font-sans">Run Sandbox:</span>
+              <kbd className="bg-slate-950 border border-slate-800 px-2 py-0.5 rounded text-[11px] text-purple-300">Ctrl+Enter</kbd>
+            </div>
+            <div className="flex justify-between items-center text-slate-300">
+              <span className="text-slate-400 font-sans">Save Code:</span>
+              <kbd className="bg-slate-950 border border-slate-800 px-2 py-0.5 rounded text-[11px] text-purple-300">Ctrl+S</kbd>
+            </div>
+            <div className="flex justify-between items-center text-slate-300">
+              <span className="text-slate-400 font-sans">Autocomplete:</span>
+              <kbd className="bg-slate-950 border border-slate-800 px-2 py-0.5 rounded text-[11px] text-purple-300">Ctrl+Space</kbd>
+            </div>
+            <div className="flex justify-between items-center text-slate-300">
+              <span className="text-slate-400 font-sans">Format Code:</span>
+              <kbd className="bg-slate-950 border border-slate-800 px-2 py-0.5 rounded text-[11px] text-purple-300">Shift+Alt+F</kbd>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

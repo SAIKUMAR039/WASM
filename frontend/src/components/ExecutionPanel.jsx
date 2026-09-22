@@ -146,8 +146,10 @@ export default function ExecutionPanel({
           )}
 
           <button
+            data-testid="run-wasm-btn"
             onClick={onExecute}
             disabled={isRunning}
+            title="Run Code in Wasmtime Sandbox (Ctrl+Enter)"
             className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-white transition-all shadow-lg ${
               isRunning
                 ? 'bg-purple-900/50 cursor-not-allowed opacity-75'
@@ -163,6 +165,9 @@ export default function ExecutionPanel({
               <>
                 <Play className="w-4 h-4 fill-current" />
                 <span>Run Code (Wasmtime)</span>
+                <span className="hidden xl:inline text-[10px] bg-emerald-700/60 px-1.5 py-0.5 rounded text-emerald-200 font-mono">
+                  Ctrl+↵
+                </span>
               </>
             )}
           </button>
