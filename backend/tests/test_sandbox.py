@@ -143,5 +143,27 @@ def test_benchmark_calculation_metrics():
     assert len(lats) == 5
     assert all(l > 0 for l in lats)
 
+def test_concurrent_sandbox_executions():
+    """Verify thread-local stream isolation during concurrent plugin runs."""
+    import concurrent.futures
+
+    runner = WasmSandboxRunner()
+    code1 = "def process(data): return f'thread_1_{data}'"
+    code2 = "def process(data): return f'thread_2_{data}'"
+    b1 = PythonWasmCompiler.compile_plugin(code1, use_cache=False)
+    b2 = PythonWasmCompiler.compile_plugin(code2, use_cache=False)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(runner.execute, b1, "A")
+        f2 = executor.submit(runner.execute, b2, "B")
+        r1 = f1.result()
+        r2 = f2.result()
+
+    assert r1["status"] == "SUCCESS"
+    assert r2["status"] == "SUCCESS"
+    assert r1["output_result"] == "thread_1_A"
+    assert r2["output_result"] == "thread_2_B"
+
+
 
 
