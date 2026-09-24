@@ -147,6 +147,23 @@ class CodeValidationResponse(BaseModel):
     errors: list[str] = []
     line_numbers: list[int] = []
 
+class BytecodeSectionInfo(BaseModel):
+    name: str
+    size_bytes: int
+    preview: Optional[str] = None
+
+class BytecodeInspectionRequest(BaseModel):
+    code: str
+
+class BytecodeInspectionResponse(BaseModel):
+    cache_key: str
+    wasm_size_bytes: int
+    header_magic: str
+    header_version: int
+    fuel_estimate: int
+    sections: list[BytecodeSectionInfo] = []
+
+
 
 
 

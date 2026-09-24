@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Terminal, CheckCircle2, AlertTriangle, Clock, ShieldX, Loader2, Zap, Timer, Download, Radio } from 'lucide-react';
+import { Play, Terminal, CheckCircle2, AlertTriangle, Clock, ShieldX, Loader2, Zap, Timer, Download, Radio, Binary } from 'lucide-react';
+import { api } from '../services/api';
 
 export default function ExecutionPanel({
   onExecute,
@@ -11,8 +12,10 @@ export default function ExecutionPanel({
   isStreaming = false,
   useStreaming = true,
   setUseStreaming = null,
+  code = '',
 }) {
-  const [activeTab, setActiveTab] = useState('output'); // 'output' | 'stdout' | 'stderr'
+  const [activeTab, setActiveTab] = useState('output'); // 'output' | 'stdout' | 'stderr' | 'bytecode'
+  const [bytecodeInfo, setBytecodeInfo] = useState(null);
   const consoleBottomRef = useRef(null);
 
   // Automatically switch tab on execution complete or streaming start
@@ -252,6 +255,25 @@ export default function ExecutionPanel({
             >
               Stderr / Traceback
             </button>
+            <button
+              onClick={async () => {
+                setActiveTab('bytecode');
+                if (!bytecodeInfo && code) {
+                  try {
+                    const res = await api.inspectBytecode(code);
+                    if (res) setBytecodeInfo(res);
+                  } catch (e) {}
+                }
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                activeTab === 'bytecode'
+                  ? 'bg-purple-950/60 text-purple-300 border border-purple-500/30 font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Binary className="w-3 h-3 text-purple-400" />
+              <span>Bytecode (WASM)</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
@@ -298,6 +320,54 @@ export default function ExecutionPanel({
             <div className="text-slate-300 font-mono text-xs whitespace-pre-wrap">
               {streamingStdout || executionResult?.stdout || (isStreaming ? 'Connecting to stdout stream...' : '(Empty stdout)')}
               <div ref={consoleBottomRef} />
+            </div>
+          ) : activeTab === 'bytecode' ? (
+            <div className="space-y-3 font-mono text-xs">
+              {!bytecodeInfo ? (
+                <div className="text-slate-500 py-6 text-center">
+                  Loading WebAssembly binary structure and custom sections...
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-900 p-2.5 rounded-lg border border-slate-800 text-[11px]">
+                    <div>
+                      <span className="text-slate-500 block">Header Magic</span>
+                      <span className="text-purple-300 font-bold">{bytecodeInfo.header_magic}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">WASM Version</span>
+                      <span className="text-purple-300 font-bold">{bytecodeInfo.header_version}.0</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Artifact Size</span>
+                      <span className="text-blue-300 font-bold">{bytecodeInfo.wasm_size_bytes} bytes</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Fuel Estimate</span>
+                      <span className="text-amber-300 font-bold">{bytecodeInfo.fuel_estimate.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="text-slate-400 font-semibold block text-[11px] uppercase tracking-wider">
+                      WASM Custom Sections ({bytecodeInfo.sections.length})
+                    </span>
+                    {bytecodeInfo.sections.map((sec) => (
+                      <div key={sec.name} className="p-2.5 bg-slate-900 border border-slate-800/80 rounded-lg space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-purple-300 font-bold">{sec.name}</span>
+                          <span className="text-slate-500">{sec.size_bytes} bytes</span>
+                        </div>
+                        {sec.preview && (
+                          <pre className="text-[10px] text-slate-400 bg-slate-950 p-2 rounded truncate overflow-hidden">
+                            {sec.preview}
+                          </pre>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <pre className="text-rose-400 whitespace-pre-wrap">

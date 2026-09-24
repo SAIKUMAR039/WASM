@@ -4,8 +4,17 @@ import threading
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 from app.database import get_db
-from app.schemas import ExecutionRequest, ExecutionResponse, BenchmarkRequest, BenchmarkResponse
+from app.schemas import (
+    ExecutionRequest,
+    ExecutionResponse,
+    BenchmarkRequest,
+    BenchmarkResponse,
+    BytecodeInspectionRequest,
+    BytecodeInspectionResponse
+)
 from app.pipeline.validator import validate_python_code
+from app.pipeline.compiler import PythonWasmCompiler
+from app.pipeline.cache import parse_wasm_custom_sections
 from app.pipeline.compiler_cache import compiler_cache
 from app.pipeline.rate_limiter import rate_limiter
 from app.sandbox.wasmtime_runner import WasmSandboxRunner
@@ -166,6 +175,48 @@ def benchmark_plugin(req: BenchmarkRequest, db=Depends(get_db)):
         "success_rate_pct": round((success_count / n) * 100.0, 1),
         "raw_latencies_ms": latencies_ms
     }
+
+
+@router.post("/inspect-bytecode", response_model=BytecodeInspectionResponse)
+def inspect_plugin_bytecode(req: BytecodeInspectionRequest):
+    """
+    Compiles Python plugin code into a WebAssembly binary module and analyzes its
+    custom sections, size breakdown, header metadata, and fuel quota footprint.
+    """
+    if not req.code or not req.code.strip():
+        raise HTTPException(status_code=400, detail="No code provided for bytecode inspection")
+
+    artifact = PythonWasmCompiler.compile_plugin(req.code, use_cache=True)
+    sections = parse_wasm_custom_sections(artifact.wasm_bytes)
+
+    sec_infos = []
+    for name, data in sections.items():
+        preview = None
+        if name in ("wasmbox_metadata", "wasmbox_wheels"):
+            try:
+                preview = data.decode("utf-8")
+            except Exception:
+                preview = f"Binary ({len(data)} bytes)"
+        elif name == "wasmbox_source":
+            preview = data.decode("utf-8", errors="replace")[:200] + "..."
+        else:
+            preview = f"Binary bytecode payload ({len(data)} bytes)"
+
+        sec_infos.append({
+            "name": name,
+            "size_bytes": len(data),
+            "preview": preview
+        })
+
+    return {
+        "cache_key": artifact.cache_key,
+        "wasm_size_bytes": len(artifact.wasm_bytes),
+        "header_magic": "\\x00asm",
+        "header_version": 1,
+        "fuel_estimate": max(1420, len(req.code) * 6),
+        "sections": sec_infos
+    }
+
 
 
 

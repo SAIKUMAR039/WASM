@@ -272,6 +272,7 @@ export default function App() {
               {/* Right Column: Execution Panel */}
               <div className="lg:col-span-5 h-full">
                 <ExecutionPanel
+                  code={code}
                   onExecute={handleExecute}
                   isRunning={isRunning}
                   executionResult={executionResult}
@@ -301,6 +302,7 @@ export default function App() {
                 </div>
                 <div className="lg:col-span-6">
                   <ExecutionPanel
+                    code={code}
                     onExecute={handleExecute}
                     isRunning={isRunning}
                     executionResult={executionResult}
