@@ -18,7 +18,7 @@ SAFE_STDLIB_MODULES = [
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "WasmBox"
-    VERSION: str = "0.1.0"
+    VERSION: str = "0.2.0"
     API_V1_STR: str = "/api"
     
     # MongoDB Configuration
