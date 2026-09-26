@@ -37,6 +37,9 @@ export const api = {
 
   // Execution Endpoints
   executeCode: (payload) => request('/execute', { method: 'POST', body: JSON.stringify(payload) }),
+  submitAsyncJob: (payload) => request('/execute/async', { method: 'POST', body: JSON.stringify(payload) }),
+  getJobStatus: (jobId) => request(`/execute/jobs/${jobId}`),
+  listJobs: (tenantId = 'tenant_default', limit = 50) => request(`/execute/jobs?tenant_id=${tenantId}&limit=${limit}`),
   runBenchmark: (payload) => request('/execute/benchmark', { method: 'POST', body: JSON.stringify(payload) }),
   inspectBytecode: (code) => request('/execute/inspect-bytecode', { method: 'POST', body: JSON.stringify({ code }) }),
 

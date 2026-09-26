@@ -163,6 +163,29 @@ class BytecodeInspectionResponse(BaseModel):
     fuel_estimate: int
     sections: list[BytecodeSectionInfo] = []
 
+class JobSubmitRequest(BaseModel):
+    plugin_id: Optional[str] = None
+    code: Optional[str] = None
+    input_data: Optional[Any] = "HELLO WORLD"
+    env_vars: Optional[dict[str, str]] = None
+    tenant_id: str = "tenant_default"
+    callback_url: Optional[str] = None
+
+class JobStatusResponse(BaseModel):
+    job_id: str
+    tenant_id: str = "tenant_default"
+    status: str  # PENDING, RUNNING, COMPLETED, FAILED, SECURITY_VIOLATION
+    output_result: Optional[Any] = None
+    stdout: Optional[str] = ""
+    stderr: Optional[str] = ""
+    execution_time_sec: Optional[float] = None
+    memory_used_mb: Optional[float] = None
+    error: Optional[str] = None
+    submitted_at: datetime
+    completed_at: Optional[datetime] = None
+    callback_url: Optional[str] = None
+
+
 
 
 

@@ -2,7 +2,7 @@ import uuid
 import asyncio
 import threading
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, BackgroundTasks
 from app.database import get_db
 from app.schemas import (
     ExecutionRequest,
@@ -10,7 +10,9 @@ from app.schemas import (
     BenchmarkRequest,
     BenchmarkResponse,
     BytecodeInspectionRequest,
-    BytecodeInspectionResponse
+    BytecodeInspectionResponse,
+    JobSubmitRequest,
+    JobStatusResponse
 )
 from app.pipeline.validator import validate_python_code
 from app.pipeline.compiler import PythonWasmCompiler
@@ -218,6 +220,137 @@ def inspect_plugin_bytecode(req: BytecodeInspectionRequest):
     }
 
 
+_job_store: dict[str, dict] = {}
+
+
+def _execute_job_task(job_id: str, req_data: dict, db=None):
+    job = _job_store.get(job_id)
+    if not job:
+        return
+    job["status"] = "RUNNING"
+    tenant_id = req_data.get("tenant_id", "tenant_default")
+    code_to_run = req_data.get("code")
+    plugin_id = req_data.get("plugin_id")
+    input_data = req_data.get("input_data", "HELLO WORLD")
+    env_vars = req_data.get("env_vars")
+    callback_url = req_data.get("callback_url")
+
+    try:
+        if plugin_id and db is not None:
+            plugin = db["plugins"].find_one({"_id": plugin_id, "tenant_id": tenant_id})
+            if plugin:
+                code_to_run = plugin.get("code")
+
+        if not code_to_run or not code_to_run.strip():
+            job["status"] = "FAILED"
+            job["error"] = "No Python code provided for execution"
+            job["completed_at"] = datetime.utcnow()
+            return
+
+        is_valid, violations = validate_python_code(code_to_run)
+        if not is_valid:
+            job["status"] = "SECURITY_VIOLATION"
+            job["error"] = "Security Violation: " + "; ".join(violations)
+            job["stderr"] = "\n".join(violations)
+            job["completed_at"] = datetime.utcnow()
+            return
+
+        bundled = compiler_cache.compile(code_to_run, env_vars=env_vars)
+        runner = WasmSandboxRunner(memory_limit_mb=128, timeout_sec=10.0)
+        res = runner.execute(bundled, input_data)
+
+        job["status"] = "COMPLETED" if res["status"] == "SUCCESS" else "FAILED"
+        job["output_result"] = res.get("output_result")
+        job["stdout"] = res.get("stdout", "")
+        job["stderr"] = res.get("stderr", "")
+        job["execution_time_sec"] = res.get("execution_time_sec")
+        job["memory_used_mb"] = res.get("memory_used_mb")
+        job["completed_at"] = datetime.utcnow()
+
+        if db is not None:
+            db["jobs"].update_one({"_id": job_id}, {"$set": job}, upsert=True)
+
+        if callback_url:
+            try:
+                import urllib.request
+                import json
+                payload = json.dumps({
+                    "job_id": job_id,
+                    "status": job["status"],
+                    "output_result": job["output_result"],
+                    "stdout": job["stdout"],
+                    "stderr": job["stderr"],
+                    "completed_at": job["completed_at"].isoformat()
+                }).encode("utf-8")
+                hook_req = urllib.request.Request(
+                    callback_url,
+                    data=payload,
+                    headers={"Content-Type": "application/json"}
+                )
+                urllib.request.urlopen(hook_req, timeout=3)
+            except Exception:
+                pass
+    except Exception as exc:
+        job["status"] = "FAILED"
+        job["error"] = str(exc)
+        job["completed_at"] = datetime.utcnow()
+
+
+@router.post("/async", response_model=JobStatusResponse)
+def submit_async_job(req: JobSubmitRequest, background_tasks: BackgroundTasks, db=Depends(get_db)):
+    """
+    Submits a Python plugin for asynchronous background execution.
+    Returns immediately with a job ID and PENDING status.
+    Clients can poll GET /api/execute/jobs/{job_id} or receive an HTTP POST webhook callback.
+    """
+    job_id = str(uuid.uuid4())
+    now = datetime.utcnow()
+    job_doc = {
+        "_id": job_id,
+        "job_id": job_id,
+        "tenant_id": req.tenant_id,
+        "status": "PENDING",
+        "output_result": None,
+        "stdout": "",
+        "stderr": "",
+        "execution_time_sec": None,
+        "memory_used_mb": None,
+        "error": None,
+        "submitted_at": now,
+        "completed_at": None,
+        "callback_url": req.callback_url
+    }
+    _job_store[job_id] = job_doc
+    if db is not None:
+        db["jobs"].insert_one(job_doc)
+
+    background_tasks.add_task(_execute_job_task, job_id, req.dict(), db)
+    return job_doc
+
+
+@router.get("/jobs/{job_id}", response_model=JobStatusResponse)
+def get_job_status(job_id: str, db=Depends(get_db)):
+    """
+    Polls the current status, console logs, and result of an asynchronous background execution job.
+    """
+    job = _job_store.get(job_id)
+    if not job and db is not None:
+        job = db["jobs"].find_one({"_id": job_id})
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    return job
+
+
+@router.get("/jobs", response_model=list[JobStatusResponse])
+def list_jobs(tenant_id: str = "tenant_default", limit: int = 50, db=Depends(get_db)):
+    """
+    Lists recent asynchronous background jobs for a tenant.
+    """
+    if db is not None:
+        jobs = list(db["jobs"].find({"tenant_id": tenant_id}).sort("submitted_at", -1).limit(limit))
+        return jobs
+    matching = [j for j in _job_store.values() if j.get("tenant_id") == tenant_id]
+    return sorted(matching, key=lambda x: x["submitted_at"], reverse=True)[:limit]
 
 
 async def handle_websocket_execution(websocket: WebSocket, db=None):
