@@ -87,11 +87,11 @@ def execute_code(req: ExecutionRequest, db=Depends(get_db)):
         return exec_doc
 
     # 2. Package into WASM Harness
-    bundled = compiler_cache.compile(code_to_run, env_vars=req.env_vars)
+    bundled = compiler_cache.compile(code_to_run, env_vars=req.env_vars, mounts=req.mounts)
 
     # 3. Execute in Wasmtime Sandbox Runner
     runner = WasmSandboxRunner(memory_limit_mb=mem_limit, timeout_sec=timeout_sec)
-    res = runner.execute(bundled, req.input_data)
+    res = runner.execute(bundled, req.input_data, mounts=req.mounts)
 
     # 4. Save MongoDB Document
     exec_doc = {
@@ -233,6 +233,7 @@ def _execute_job_task(job_id: str, req_data: dict, db=None):
     plugin_id = req_data.get("plugin_id")
     input_data = req_data.get("input_data", "HELLO WORLD")
     env_vars = req_data.get("env_vars")
+    mounts = req_data.get("mounts")
     callback_url = req_data.get("callback_url")
 
     try:
@@ -255,9 +256,9 @@ def _execute_job_task(job_id: str, req_data: dict, db=None):
             job["completed_at"] = datetime.utcnow()
             return
 
-        bundled = compiler_cache.compile(code_to_run, env_vars=env_vars)
+        bundled = compiler_cache.compile(code_to_run, env_vars=env_vars, mounts=mounts)
         runner = WasmSandboxRunner(memory_limit_mb=128, timeout_sec=10.0)
-        res = runner.execute(bundled, input_data)
+        res = runner.execute(bundled, input_data, mounts=mounts)
 
         job["status"] = "COMPLETED" if res["status"] == "SUCCESS" else "FAILED"
         job["output_result"] = res.get("output_result")
@@ -454,13 +455,14 @@ async def handle_websocket_execution(websocket: WebSocket, db=None):
         loop.call_soon_threadsafe(stream_queue.put_nowait, (stream_type, chunk))
 
     env_vars = data.get("env_vars")
-    bundled = compiler_cache.compile(code_to_run, env_vars=env_vars)
+    mounts = data.get("mounts")
+    bundled = compiler_cache.compile(code_to_run, env_vars=env_vars, mounts=mounts)
     runner = WasmSandboxRunner(memory_limit_mb=mem_limit, timeout_sec=timeout_sec)
 
     cancel_event = threading.Event()
     # Run execution in worker thread with cancellation support
     runner_task = asyncio.create_task(
-        asyncio.to_thread(runner.execute, bundled, input_data, stream_callback, cancel_event)
+        asyncio.to_thread(runner.execute, bundled, input_data, stream_callback, cancel_event, mounts)
     )
 
     disconnected = False

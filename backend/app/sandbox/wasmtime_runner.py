@@ -93,13 +93,15 @@ class WasmSandboxRunner:
         bundled_code: str,
         input_data: Any,
         stream_callback: Any = None,
-        cancel_event: Optional[threading.Event] = None
+        cancel_event: Optional[threading.Event] = None,
+        mounts: Optional[Dict[str, str]] = None
     ) -> Dict[str, Any]:
         """
         Executes user Python code inside the sandbox.
         Captures stdout, stderr, exception tracebacks, process(data) return values,
         microsecond latency, memory growth delta, and WASM fuel consumption units.
         Optionally streams stdout/stderr chunks via stream_callback.
+        Supports isolated in-memory Virtual Filesystem (VFS) mounts.
         Can be aborted prematurely via cancel_event.
         """
         start_time = time.perf_counter()
@@ -129,6 +131,24 @@ class WasmSandboxRunner:
         error_msg = None
         timed_out = [False]
         instruction_counter = [0]
+        temp_vfs_dir = None
+        orig_cwd = None
+
+        if mounts:
+            import tempfile
+            import os
+            try:
+                temp_vfs_dir = tempfile.mkdtemp(prefix="wasmbox_vfs_")
+                orig_cwd = os.getcwd()
+                for filename, content in mounts.items():
+                    clean_rel = os.path.normpath(filename).lstrip(os.path.sep).replace("..", "")
+                    full_path = os.path.join(temp_vfs_dir, clean_rel)
+                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                    with open(full_path, "w", encoding="utf-8") as f:
+                        f.write(content if isinstance(content, str) else str(content))
+                os.chdir(temp_vfs_dir)
+            except Exception:
+                pass
 
         def timeout_handler():
             timed_out[0] = True
@@ -231,6 +251,18 @@ class WasmSandboxRunner:
             _local.stdout = None
             _local.stderr = None
             _local.stdin = None
+            if orig_cwd is not None:
+                import os
+                try:
+                    os.chdir(orig_cwd)
+                except Exception:
+                    pass
+            if temp_vfs_dir is not None:
+                import shutil
+                try:
+                    shutil.rmtree(temp_vfs_dir, ignore_errors=True)
+                except Exception:
+                    pass
 
         elapsed_sec = round(time.perf_counter() - start_time, 4)
         elapsed_ms = round(elapsed_sec * 1000, 2)

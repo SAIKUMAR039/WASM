@@ -54,10 +54,20 @@ import uuid
 # --- USER PLUGIN CODE END ---
 
 _WASMSBOX_ENV = {env_json}
+_WASMSBOX_VFS = {vfs_json}
 
 def wasmbox_getenv(key: str, default=None):
-    """Retrieve an environment variable safely provided by the tenant sandbox."""
+    '''Retrieve an environment variable safely provided by the tenant sandbox.'''
     return _WASMSBOX_ENV.get(key, default)
+
+def wasmbox_read_file(path: str, default=None):
+    '''Retrieve virtual filesystem file content safely mounted in the sandbox.'''
+    clean_path = str(path).lstrip("/" + chr(92))
+    return _WASMSBOX_VFS.get(clean_path, _WASMSBOX_VFS.get(str(path), default))
+
+def wasmbox_list_files():
+    '''List all file paths mounted in the virtual filesystem.'''
+    return list(_WASMSBOX_VFS.keys())
 
 def _wasmbox_main(raw_input_json):
     data = None
@@ -115,7 +125,8 @@ if __name__ == "__main__":
         use_cache: bool = True,
         build_config: Optional[Dict[str, Any]] = None,
         wheels: Optional[List[str]] = None,
-        env_vars: Optional[Dict[str, str]] = None
+        env_vars: Optional[Dict[str, str]] = None,
+        mounts: Optional[Dict[str, str]] = None
     ) -> CompiledWasmArtifact:
         """
         Compiles user python code into the Wasm execution harness and pre-compiled bytecode.
@@ -140,8 +151,8 @@ if __name__ == "__main__":
 
         cache_key = cls.cache.compute_cache_key(code, build_config=cache_build_config, wheels=wheels)
 
-        # 1. Check compiler cache (only if clean_env is empty so env values aren't baked into shared cache)
-        if use_cache and cls.cache.enabled and not clean_env:
+        # 1. Check compiler cache (only if clean_env and mounts are empty so values aren't baked into shared cache)
+        if use_cache and cls.cache.enabled and not clean_env and not mounts:
             cached = cls.cache.get(cache_key)
             if cached is not None:
                 return cached
@@ -150,7 +161,8 @@ if __name__ == "__main__":
         try:
             harness_code = cls.ENTRY_HARNESS_TEMPLATE.format(
                 user_code=code,
-                env_json=json.dumps(clean_env)
+                env_json=json.dumps(clean_env),
+                vfs_json=json.dumps(mounts or {})
             )
         except Exception as e:
             raise WasmCompilationError(f"Failed to generate execution harness: {e}")

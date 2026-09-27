@@ -164,6 +164,31 @@ def test_concurrent_sandbox_executions():
     assert r1["output_result"] == "thread_1_A"
     assert r2["output_result"] == "thread_2_B"
 
+def test_sandbox_virtual_filesystem_mounts():
+    """Verify sandboxed Virtual Filesystem (VFS) in-memory mounts and file reading."""
+    runner = WasmSandboxRunner()
+    code = """def process(data):
+    config_raw = wasmbox_read_file("config.json")
+    files = wasmbox_list_files()
+    return {
+        "files": files,
+        "config_found": config_raw is not None,
+        "is_json": "wasmbox" in config_raw
+    }
+"""
+    mounts = {
+        "config.json": '{"app": "wasmbox", "version": "0.3.0"}',
+        "data/sample.csv": "id,val\n1,100\n2,200"
+    }
+    bundled = PythonWasmCompiler.compile_plugin(code, mounts=mounts)
+    res = runner.execute(bundled, None, mounts=mounts)
+
+    assert res["status"] == "SUCCESS"
+    assert "config.json" in res["output_result"]["files"]
+    assert res["output_result"]["config_found"] is True
+    assert res["output_result"]["is_json"] is True
+
+
 
 
 
