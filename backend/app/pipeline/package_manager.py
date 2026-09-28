@@ -4,7 +4,7 @@ import shutil
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Any
 from app.config import settings
 
 NATIVE_BINARY_EXTENSIONS = {".so", ".pyd", ".dylib", ".dll", ".exe", ".bin"}
@@ -202,6 +202,84 @@ class WasmPackageManager:
                 zf.extract(member, target_path)
 
         return str(target_path)
+
+    def analyze_dependencies(self, code: str) -> Dict[str, Any]:
+        """
+        Parses Python code to extract all imported modules, then classifies each:
+        - 'stdlib_safe': safe standard library module (math, json, datetime, etc.)
+        - 'wheel_available': provided by an installed pure-Python wheel
+        - 'blocked': explicitly forbidden system module (os, sys, subprocess, etc.)
+        - 'unknown': unresolvable external import
+        """
+        import ast
+        from app.config import SAFE_STDLIB_MODULES
+        from app.pipeline.validator import DISALLOWED_MODULES
+
+        dependencies = []
+        missing = []
+        blocked = []
+
+        try:
+            tree = ast.parse(code)
+        except Exception:
+            return {
+                "total_imports": 0,
+                "is_compatible": False,
+                "dependencies": [],
+                "missing_dependencies": [],
+                "blocked_dependencies": []
+            }
+
+        imported_items = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    imported_items.append((alias.name, node.lineno))
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    imported_items.append((node.module, node.lineno))
+
+        allowed_wheel_pkgs = self.get_allowed_packages()
+
+        for mod_name, lineno in imported_items:
+            root_mod = mod_name.split(".")[0]
+            if root_mod in DISALLOWED_MODULES:
+                status = "blocked"
+                source = "Disallowed system module"
+                is_compat = False
+                blocked.append(mod_name)
+            elif root_mod in SAFE_STDLIB_MODULES:
+                status = "stdlib_safe"
+                source = f"Standard Library ({root_mod})"
+                is_compat = True
+            elif root_mod in allowed_wheel_pkgs:
+                wheel_info = self.get_wheel(root_mod)
+                status = "wheel_available"
+                source = f"Wheel: {wheel_info.name} v{wheel_info.version}" if wheel_info else "Wheel package"
+                is_compat = True
+            else:
+                status = "unknown"
+                source = "External / Not found"
+                is_compat = False
+                missing.append(mod_name)
+
+            dependencies.append({
+                "module": mod_name,
+                "status": status,
+                "source": source,
+                "line_number": lineno,
+                "is_compatible": is_compat
+            })
+
+        is_all_compatible = len(blocked) == 0 and len(missing) == 0
+
+        return {
+            "total_imports": len(dependencies),
+            "is_compatible": is_all_compatible,
+            "dependencies": dependencies,
+            "missing_dependencies": list(set(missing)),
+            "blocked_dependencies": list(set(blocked))
+        }
 
 _default_package_manager: Optional[WasmPackageManager] = None
 

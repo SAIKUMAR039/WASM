@@ -188,6 +188,32 @@ def test_sandbox_virtual_filesystem_mounts():
     assert res["output_result"]["config_found"] is True
     assert res["output_result"]["is_json"] is True
 
+def test_package_manager_dependency_analysis():
+    """Verify package manager AST dependency analysis and compatibility tagging."""
+    from app.pipeline.package_manager import get_package_manager
+    pkg_mgr = get_package_manager()
+
+    code = """import math
+import json
+import os
+import non_existent_custom_package
+
+def process(data):
+    return math.sqrt(16)
+"""
+    analysis = pkg_mgr.analyze_dependencies(code)
+    assert analysis["total_imports"] == 4
+    assert analysis["is_compatible"] is False
+    assert "os" in analysis["blocked_dependencies"]
+    assert "non_existent_custom_package" in analysis["missing_dependencies"]
+
+    deps = {d["module"]: d for d in analysis["dependencies"]}
+    assert deps["math"]["status"] == "stdlib_safe"
+    assert deps["math"]["is_compatible"] is True
+    assert deps["os"]["status"] == "blocked"
+    assert deps["os"]["is_compatible"] is False
+
+
 
 
 

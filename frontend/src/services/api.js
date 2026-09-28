@@ -31,6 +31,8 @@ export const api = {
   },
   getTemplates: () => request('/plugins/templates'),
   validateCode: (code) => request('/plugins/validate', { method: 'POST', body: JSON.stringify({ code }) }),
+  inspectDependencies: (code) => request('/plugins/dependencies', { method: 'POST', body: JSON.stringify({ code }) }),
+  getAvailableWheels: () => request('/plugins/wheels'),
   createPlugin: (data) => request('/plugins', { method: 'POST', body: JSON.stringify(data) }),
   updatePlugin: (id, data) => request(`/plugins/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePlugin: (id) => request(`/plugins/${id}`, { method: 'DELETE' }),

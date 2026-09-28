@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Save, Trash2, FileCode, Check, AlertCircle, Sparkles, BookOpen, X } from 'lucide-react';
+import { Plus, Save, Trash2, FileCode, Check, AlertCircle, Sparkles, BookOpen, X, Package } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function PluginManager({ plugins, selectedPlugin, onSelectPlugin, onSavePlugin, onCreatePlugin, onDeletePlugin }) {
@@ -12,12 +12,29 @@ export default function PluginManager({ plugins, selectedPlugin, onSelectPlugin,
   const [isCreating, setIsCreating] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [templates, setTemplates] = useState([]);
+  const [showWheels, setShowWheels] = useState(false);
+  const [wheels, setWheels] = useState([]);
+  const [depAnalysis, setDepAnalysis] = useState(null);
+  const [depLoading, setDepLoading] = useState(false);
 
   useEffect(() => {
     api.getTemplates()
       .then(res => { if (res) setTemplates(res); })
       .catch(() => {});
   }, []);
+
+  const handleOpenWheels = () => {
+    setShowWheels(true);
+    api.getAvailableWheels()
+      .then(res => { if (res) setWheels(res); })
+      .catch(() => {});
+    if (selectedPlugin && selectedPlugin.code) {
+      setDepLoading(true);
+      api.inspectDependencies(selectedPlugin.code)
+        .then(res => { setDepAnalysis(res); setDepLoading(false); })
+        .catch(() => setDepLoading(false));
+    }
+  };
 
   const categories = ['all', 'general', 'data', 'security', 'utility', 'math'];
 
@@ -53,6 +70,12 @@ export default function PluginManager({ plugins, selectedPlugin, onSelectPlugin,
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleOpenWheels}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-300 bg-blue-950/60 hover:bg-blue-900/60 border border-blue-500/30 rounded-xl transition-all shadow-sm"
+          >
+            <Package className="w-3.5 h-3.5 text-blue-400" /> Packages
+          </button>
           <button
             onClick={() => setShowTemplates(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-300 bg-purple-950/60 hover:bg-purple-900/60 border border-purple-500/30 rounded-xl transition-all shadow-sm"
@@ -273,6 +296,104 @@ export default function PluginManager({ plugins, selectedPlugin, onSelectPlugin,
                   </pre>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Packages & Dependency Inspector Modal */}
+      {showWheels && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5 text-blue-400" />
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Packages & Dependency Inspector</h3>
+              </div>
+              <button
+                onClick={() => setShowWheels(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Audit sandbox pure-Python wheels and import dependencies for safe execution inside the WebAssembly runner.
+            </p>
+
+            <div className="space-y-4 overflow-y-auto flex-1 pr-1">
+              <div>
+                <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Installed Pure-Python Wheels</h4>
+                {wheels.length === 0 ? (
+                  <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl text-xs text-slate-500">
+                    No custom wheel packages installed in wheels/ directory. Standard library safe modules are enabled.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {wheels.map((w, idx) => (
+                      <div key={idx} className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-blue-300">{w.name}</span>
+                          <span className="text-[10px] bg-blue-950 text-blue-400 border border-blue-800/40 px-1.5 py-0.5 rounded font-mono">v{w.version}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-mono truncate">{w.filename}</p>
+                        <div className="flex items-center gap-1 text-[10px] text-emerald-400">
+                          <Check className="w-3 h-3" /> Pure-Python WASM Safe
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {selectedPlugin && (
+                <div className="border-t border-slate-800 pt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Dependency Audit: <span className="text-purple-300 normal-case">{selectedPlugin.name}</span>
+                    </h4>
+                    {depLoading && <span className="text-xs text-purple-400 animate-pulse">Inspecting imports...</span>}
+                  </div>
+
+                  {depAnalysis && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1.5 ${
+                          depAnalysis.is_compatible
+                            ? 'bg-emerald-950/70 border border-emerald-700/50 text-emerald-300'
+                            : 'bg-rose-950/70 border border-rose-700/50 text-rose-300'
+                        }`}>
+                          {depAnalysis.is_compatible ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                          {depAnalysis.is_compatible ? 'All Imports Compatible' : 'Incompatible Imports Detected'}
+                        </span>
+                        <span className="text-xs text-slate-400 font-mono">
+                          {depAnalysis.total_imports} total {depAnalysis.total_imports === 1 ? 'import' : 'imports'}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                        {depAnalysis.dependencies.map((dep, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-2 bg-slate-950/50 border border-slate-800 rounded-lg text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-slate-200">{dep.module}</span>
+                              <span className="text-[10px] text-slate-500 font-mono">Line {dep.line_number}</span>
+                            </div>
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-mono ${
+                              dep.status === 'stdlib_safe' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/40' :
+                              dep.status === 'wheel_available' ? 'bg-blue-950 text-blue-400 border border-blue-800/40' :
+                              dep.status === 'blocked' ? 'bg-rose-950 text-rose-400 border border-rose-800/40' :
+                              'bg-amber-950 text-amber-400 border border-amber-800/40'
+                            }`}>
+                              {dep.source}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

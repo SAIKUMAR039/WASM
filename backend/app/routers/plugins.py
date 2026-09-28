@@ -4,9 +4,19 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.database import get_db
-from app.schemas import PluginCreate, PluginUpdate, PluginResponse, CodeValidationRequest, CodeValidationResponse
+from app.schemas import (
+    PluginCreate,
+    PluginUpdate,
+    PluginResponse,
+    CodeValidationRequest,
+    CodeValidationResponse,
+    DependencyInspectionRequest,
+    DependencyInspectionResponse,
+    WheelMetadataResponse
+)
 from app.pipeline.templates import STANDARD_TEMPLATES
 from app.pipeline.validator import validate_python_code
+from app.pipeline.package_manager import get_package_manager
 
 router = APIRouter(prefix="/plugins", tags=["Plugins"])
 
@@ -42,6 +52,36 @@ def validate_plugin_code(req: CodeValidationRequest):
         "errors": violations,
         "line_numbers": line_numbers
     }
+
+@router.post("/dependencies", response_model=DependencyInspectionResponse)
+def inspect_plugin_dependencies(req: DependencyInspectionRequest):
+    """
+    Parses plugin source code and validates all imported modules against safe standard library
+    modules and registered pure-Python wheels.
+    Returns status, line numbers, and compatibility details for each import.
+    """
+    pkg_mgr = get_package_manager()
+    analysis = pkg_mgr.analyze_dependencies(req.code)
+    return analysis
+
+@router.get("/wheels", response_model=List[WheelMetadataResponse])
+def list_registered_wheels():
+    """
+    Lists all indexed pure-Python wheels installed in the sandbox.
+    """
+    pkg_mgr = get_package_manager()
+    wheels = pkg_mgr.list_available_wheels()
+    return [
+        {
+            "name": w.name,
+            "version": w.version,
+            "filename": w.filename,
+            "is_pure_python": w.is_pure_python,
+            "is_safe": w.is_safe,
+            "top_level_packages": w.top_level_packages
+        }
+        for w in wheels
+    ]
 
 @router.get("", response_model=List[PluginResponse])
 def list_plugins(

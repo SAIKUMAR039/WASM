@@ -188,6 +188,32 @@ class JobStatusResponse(BaseModel):
     completed_at: Optional[datetime] = None
     callback_url: Optional[str] = None
 
+class DependencyItem(BaseModel):
+    module: str
+    status: str  # stdlib_safe, wheel_available, blocked, unknown
+    source: Optional[str] = None
+    line_number: Optional[int] = None
+    is_compatible: bool
+
+class DependencyInspectionRequest(BaseModel):
+    code: str
+
+class DependencyInspectionResponse(BaseModel):
+    total_imports: int
+    is_compatible: bool
+    dependencies: list[DependencyItem] = []
+    missing_dependencies: list[str] = []
+    blocked_dependencies: list[str] = []
+
+class WheelMetadataResponse(BaseModel):
+    name: str
+    version: str
+    filename: str
+    is_pure_python: bool
+    is_safe: bool
+    top_level_packages: list[str] = []
+
+
 
 
 
