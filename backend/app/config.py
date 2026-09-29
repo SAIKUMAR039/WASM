@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     WHEELS_DIR: str = "wheels"
     ALLOWED_WHEELS: list[str] = []
 
+    # Engine Concurrency Control
+    MAX_CONCURRENT_EXECUTIONS: int = 20
+
     model_config = ConfigDict(case_sensitive=True)
 
 settings = Settings()

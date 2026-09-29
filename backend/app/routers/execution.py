@@ -14,6 +14,7 @@ from app.schemas import (
     JobSubmitRequest,
     JobStatusResponse
 )
+from app.config import settings
 from app.pipeline.validator import validate_python_code
 from app.pipeline.compiler import PythonWasmCompiler
 from app.pipeline.cache import parse_wasm_custom_sections
@@ -24,6 +25,18 @@ from app.sandbox.wasmtime_runner import WasmSandboxRunner
 router = APIRouter(prefix="/execute", tags=["Execution"])
 
 _memory_executions = []
+_concurrency_lock = threading.Lock()
+_active_executions = 0
+
+def get_concurrency_stats() -> dict:
+    with _concurrency_lock:
+        max_allowed = getattr(settings, "MAX_CONCURRENT_EXECUTIONS", 20)
+        return {
+            "active_executions": _active_executions,
+            "max_concurrency": max_allowed,
+            "available_slots": max(0, max_allowed - _active_executions)
+        }
+
 
 @router.post("", response_model=ExecutionResponse)
 def execute_code(req: ExecutionRequest, db=Depends(get_db)):
@@ -38,86 +51,109 @@ def execute_code(req: ExecutionRequest, db=Depends(get_db)):
             detail=f"Rate limit exceeded for tenant '{req.tenant_id}'. Max 60 executions per minute allowed."
         )
 
-    code_to_run = req.code
-    plugin_id = req.plugin_id
+    # Global engine concurrency throttling
+    with _concurrency_lock:
+        max_allowed = getattr(settings, "MAX_CONCURRENT_EXECUTIONS", 20)
+        if _active_executions >= max_allowed:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Engine concurrency limit reached ({max_allowed} active runs). Please retry shortly.",
+                headers={"Retry-After": "1"}
+            )
+        globals()["_active_executions"] = _active_executions + 1
 
-    if plugin_id and db is not None:
-        plugin = db["plugins"].find_one({"_id": plugin_id, "tenant_id": req.tenant_id})
-        if not plugin:
-            raise HTTPException(status_code=404, detail="Plugin not found for tenant")
-        code_to_run = plugin.get("code")
+    try:
+        code_to_run = req.code
+        plugin_id = req.plugin_id
 
-    if not code_to_run or not code_to_run.strip():
-        raise HTTPException(status_code=400, detail="No Python code provided for execution")
+        if plugin_id and db is not None:
+            plugin = db["plugins"].find_one({"_id": plugin_id, "tenant_id": req.tenant_id})
+            if not plugin:
+                raise HTTPException(status_code=404, detail="Plugin not found for tenant")
+            code_to_run = plugin.get("code")
 
-    # Fetch policy document
-    mem_limit = 128
-    timeout_sec = 5.0
-    if db is not None:
-        policy = db["sandbox_policies"].find_one({"tenant_id": req.tenant_id})
-        if policy:
-            mem_limit = policy.get("memory_limit_mb", 128)
-            timeout_sec = policy.get("timeout_sec", 5.0)
+        if not code_to_run or not code_to_run.strip():
+            raise HTTPException(status_code=400, detail="No Python code provided for execution")
 
-    # 1. AST Security Validation
-    is_valid, violations = validate_python_code(code_to_run)
-    exec_id = str(uuid.uuid4())
-    now = datetime.utcnow()
+        # Fetch policy document
+        mem_limit = 128
+        timeout_sec = 5.0
+        if db is not None:
+            policy = db["sandbox_policies"].find_one({"tenant_id": req.tenant_id})
+            if policy:
+                mem_limit = policy.get("memory_limit_mb", 128)
+                timeout_sec = policy.get("timeout_sec", 5.0)
 
-    if not is_valid:
+        # 1. AST Security Validation
+        is_valid, violations = validate_python_code(code_to_run)
+        exec_id = str(uuid.uuid4())
+        now = datetime.utcnow()
+
+        if not is_valid:
+            exec_doc = {
+                "_id": exec_id,
+                "id": exec_id,
+                "plugin_id": plugin_id,
+                "tenant_id": req.tenant_id,
+                "status": "SECURITY_VIOLATION",
+                "input_data": req.input_data,
+                "output_result": {"error": "Security Violation", "details": violations},
+                "stdout": "",
+                "stderr": "\n".join(violations),
+                "execution_time_sec": 0.001,
+                "memory_used_mb": 0.0,
+                "executed_at": now
+            }
+            if db is not None:
+                db["executions"].insert_one(exec_doc)
+            else:
+                _memory_executions.append(exec_doc)
+                
+            return exec_doc
+
+        # 2. Package into WASM Harness
+        bundled = compiler_cache.compile(code_to_run, env_vars=req.env_vars, mounts=req.mounts)
+
+        # 3. Execute in Wasmtime Sandbox Runner
+        runner = WasmSandboxRunner(memory_limit_mb=mem_limit, timeout_sec=timeout_sec)
+        res = runner.execute(bundled, req.input_data, mounts=req.mounts)
+
+        # 4. Save MongoDB Document
         exec_doc = {
             "_id": exec_id,
             "id": exec_id,
             "plugin_id": plugin_id,
             "tenant_id": req.tenant_id,
-            "status": "SECURITY_VIOLATION",
+            "status": res["status"],
             "input_data": req.input_data,
-            "output_result": {"error": "Security Violation", "details": violations},
-            "stdout": "",
-            "stderr": "\n".join(violations),
-            "execution_time_sec": 0.001,
-            "memory_used_mb": 0.0,
+            "output_result": res["output_result"],
+            "stdout": res["stdout"],
+            "stderr": res["stderr"],
+            "execution_time_sec": res["execution_time_sec"],
+            "memory_used_mb": res["memory_used_mb"],
+            "peak_memory_mb": res.get("peak_memory_mb", res["memory_used_mb"]),
+            "memory_leak_warning": res.get("memory_leak_warning", False),
+            "fuel_consumed": res.get("fuel_consumed", 1420),
             "executed_at": now
         }
+
         if db is not None:
             db["executions"].insert_one(exec_doc)
         else:
             _memory_executions.append(exec_doc)
-            
+
         return exec_doc
+    finally:
+        with _concurrency_lock:
+            globals()["_active_executions"] = max(0, globals()["_active_executions"] - 1)
 
-    # 2. Package into WASM Harness
-    bundled = compiler_cache.compile(code_to_run, env_vars=req.env_vars, mounts=req.mounts)
 
-    # 3. Execute in Wasmtime Sandbox Runner
-    runner = WasmSandboxRunner(memory_limit_mb=mem_limit, timeout_sec=timeout_sec)
-    res = runner.execute(bundled, req.input_data, mounts=req.mounts)
-
-    # 4. Save MongoDB Document
-    exec_doc = {
-        "_id": exec_id,
-        "id": exec_id,
-        "plugin_id": plugin_id,
-        "tenant_id": req.tenant_id,
-        "status": res["status"],
-        "input_data": req.input_data,
-        "output_result": res["output_result"],
-        "stdout": res["stdout"],
-        "stderr": res["stderr"],
-        "execution_time_sec": res["execution_time_sec"],
-        "memory_used_mb": res["memory_used_mb"],
-        "peak_memory_mb": res.get("peak_memory_mb", res["memory_used_mb"]),
-        "memory_leak_warning": res.get("memory_leak_warning", False),
-        "fuel_consumed": res.get("fuel_consumed", 1420),
-        "executed_at": now
-    }
-
-    if db is not None:
-        db["executions"].insert_one(exec_doc)
-    else:
-        _memory_executions.append(exec_doc)
-
-    return exec_doc
+@router.get("/concurrency")
+def get_concurrency_info():
+    """
+    Returns active engine execution concurrency and capacity metrics.
+    """
+    return get_concurrency_stats()
 
 
 @router.post("/benchmark", response_model=BenchmarkResponse)
