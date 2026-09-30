@@ -213,6 +213,50 @@ def process(data):
     assert deps["os"]["status"] == "blocked"
     assert deps["os"]["is_compatible"] is False
 
+def test_async_job_execution_task():
+    """Verify asynchronous job background runner state transitions and results."""
+    from app.routers.execution import _job_store, _execute_job_task
+    import uuid
+
+    job_id = str(uuid.uuid4())
+    _job_store[job_id] = {
+        "_id": job_id,
+        "job_id": job_id,
+        "tenant_id": "tenant_test",
+        "status": "PENDING",
+        "output_result": None,
+        "stdout": "",
+        "stderr": "",
+        "execution_time_sec": None,
+        "memory_used_mb": None,
+        "error": None
+    }
+
+    req_data = {
+        "tenant_id": "tenant_test",
+        "code": "def process(data):\n    return {'status': 'async_ok', 'val': data * 3}",
+        "input_data": 7
+    }
+
+    _execute_job_task(job_id, req_data, db=None)
+
+    job = _job_store[job_id]
+    assert job["status"] == "COMPLETED"
+    assert job["output_result"] == {"status": "async_ok", "val": 21}
+    assert job["completed_at"] is not None
+
+def test_concurrency_capacity_probes():
+    """Verify global concurrency tracker and slot accounting."""
+    from app.routers.execution import get_concurrency_stats
+
+    stats = get_concurrency_stats()
+    assert "active_executions" in stats
+    assert "max_concurrency" in stats
+    assert "available_slots" in stats
+    assert stats["available_slots"] >= 0
+    assert stats["max_concurrency"] >= stats["active_executions"]
+
+
 
 
 
